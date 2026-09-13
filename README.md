@@ -110,15 +110,17 @@ python scripts/resolve_telegram_ids.py @channel1 @channel2
 
 ### Шаг 2. Пять сервисов из этого репозитория
 
-Каждый — из одного и того же репозитория, **Root Directory оставить `/`**, различается только `Config file path`:
+Каждый — из одного и того же репозитория, **Root Directory оставить `/`**. Различаются переменной `RAILWAY_DOCKERFILE_PATH` и **Settings → Deploy → Custom Start Command** (Config-as-Code для новых сервисов Railway больше не подключает — подробности в [docs/RAILWAY_VARIABLES.md](docs/RAILWAY_VARIABLES.md)):
 
-| Сервис | Config file path | Публичный домен |
-|---|---|---|
-| `api` | `railway.json` | нет¹ |
-| `worker` | `railway.worker.json` | нет |
-| `scheduler` | `railway.scheduler.json` | нет |
-| `telegram` | `railway.telegram.json` | нет |
-| `web` | `railway.web.json` | **да** |
+| Сервис | `RAILWAY_DOCKERFILE_PATH` | Custom Start Command | Публичный домен |
+|---|---|---|---|
+| `api` | `backend/Dockerfile` | `alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port $PORT` | нет¹ |
+| `worker` | `backend/Dockerfile` | `celery -A app.tasks.celery_app worker --loglevel=info --concurrency=2 --max-tasks-per-child=200` | нет |
+| `scheduler` | `backend/Dockerfile` | `celery -A app.tasks.celery_app beat --loglevel=info --scheduler redbeat.RedBeatScheduler` | нет |
+| `telegram` | `backend/Dockerfile` | `python -m app.collectors.telegram_runner` | нет |
+| `web` | `web/Dockerfile` | `node server.js` | **да** |
+
+Healthcheck Path: `api` → `/health`, `web` → `/`.
 
 ¹ Домен для `api` не нужен: `web` ходит к нему по приватной сети. Если хочешь Swagger снаружи — выдай домен, но тогда обязательно `AUTH_ENABLED=true` и непустой `ADMIN_PASSWORD`.
 
@@ -182,7 +184,7 @@ ADMIN_PASSWORD      = <тот же пароль>
 
 ### Про `railway.json` и декабрь 2026
 
-Railway объявил Config-as-Code устаревшим: `railway.json` / `railway.toml` работают **до 01.12.2026**, дальше — только Infrastructure as Code. В репозитории лежат оба формата: `railway*.json` для сегодняшнего деплоя и `.railway/railway.ts` как готовая замена. Переключение — настройка в дашборде.
+Railway объявил Config-as-Code устаревшим: `railway.json` / `railway.toml` работают **до 01.12.2026** и только у сервисов, которые подключили их до 28.08.2026 — новые сервисы подключить файл уже не могут. Поэтому прод настраивается через дашборд (см. выше), `railway*.json` лежат как справочник значений (корневой файл переименован в `railway.api.json`, иначе Railway подставлял его всем сервисам), а `.railway/railway.ts` — задел под Infrastructure as Code.
 
 ---
 

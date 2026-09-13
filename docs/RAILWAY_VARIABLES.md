@@ -31,45 +31,52 @@
 
 ### Как Railway понимает, что запускать
 
-Для каждого репо-сервиса: **Settings → Build → Config-as-code → Config file path**.
-Root Directory у всех оставить пустым (`/`). Dockerfile, стартовая команда и
-healthcheck берутся из файла — Custom Start Command вводить **не нужно**.
+**Config-as-Code (`railway*.json`) для новых сервисов не работает.** С 28.08.2026
+Railway не даёт сервисам, которые его раньше не использовали, подключить
+Config file path — поле принимается, но игнорируется. Хуже: файл `railway.json`
+в корне подхватывался *всеми* сервисами проекта автоматически (worker,
+scheduler и telegram стартовали как uvicorn). Поэтому он переименован в
+`railway.api.json`; файлы `railway*.json` остались как справочник значений.
 
-| Сервис | Config file path |
+Всё задаётся в дашборде. Root Directory у всех пустой. Три места:
+
+**1. Variables** — путь к Dockerfile (строка уже есть в блоках §2):
+
+| Сервис | `RAILWAY_DOCKERFILE_PATH` |
 |---|---|
-| `api` | `railway.json` |
-| `worker` | `railway.worker.json` |
-| `scheduler` | `railway.scheduler.json` |
-| `telegram` | `railway.telegram.json` |
-| `web` | `railway.web.json` |
+| `api`, `worker`, `scheduler`, `telegram` | `backend/Dockerfile` |
+| `web` | `web/Dockerfile` |
 
-Если по какой-то причине config file не подхватился (в Deploy Logs нет
-`alembic upgrade head` / `celery` / `node server.js`) — задать руками
-в **Settings → Deploy**:
+**2. Settings → Deploy → Custom Start Command:**
 
-| Сервис | Dockerfile Path (Settings → Build) | Custom Start Command |
-|---|---|---|
-| `api` | `backend/Dockerfile` | `alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port $PORT` |
-| `worker` | `backend/Dockerfile` | `celery -A app.tasks.celery_app worker --loglevel=info --concurrency=2 --max-tasks-per-child=200` |
-| `scheduler` | `backend/Dockerfile` | `celery -A app.tasks.celery_app beat --loglevel=info --scheduler redbeat.RedBeatScheduler` |
-| `telegram` | `backend/Dockerfile` | `python -m app.collectors.telegram_runner` |
-| `web` | `web/Dockerfile` | `node server.js` |
+| Сервис | Custom Start Command |
+|---|---|
+| `api` | `alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port $PORT` |
+| `worker` | `celery -A app.tasks.celery_app worker --loglevel=info --concurrency=2 --max-tasks-per-child=200` |
+| `scheduler` | `celery -A app.tasks.celery_app beat --loglevel=info --scheduler redbeat.RedBeatScheduler` |
+| `telegram` | `python -m app.collectors.telegram_runner` |
+| `web` | `node server.js` |
+
+**3. Settings → Deploy → Healthcheck Path** — только у `api`: `/health`,
+у `web`: `/`. У worker/scheduler/telegram HTTP-порта нет — оставить пустым.
+
+Опционально **Settings → Build → Watch Paths**: `backend/**` у четырёх
+backend-сервисов, `web/**` у web — чтобы docs-коммиты не пересобирали всё.
 
 `.railway/railway.ts` — задел на Infrastructure-as-Code (после 01.12.2026);
 сейчас его подключать не нужно.
 
 ### Порядок
 
-1. `Postgres` → Variables (блок §1) → Volume на `/var/lib/postgresql/data` → дождаться зелёного.
+1. `Postgres` → Variables (блок §1) → Volume на `/var/lib/postgresql/data` → **Deploy** (кнопка вверху канваса — staged changes сами не применяются) → дождаться Online.
 2. `Redis` → ничего не настраивать.
-3. `api` → Config file path → Variables → Deploy → проверить `/health/deep`.
-4. `web` → Config file path → Variables → Generate Domain.
-5. `worker`, `scheduler` → Config file path → Variables.
+3. `api` → Variables → Custom Start Command + Healthcheck → Deploy → проверить `/health/deep`.
+4. `web` → Variables → Custom Start Command → Generate Domain.
+5. `worker`, `scheduler` → Variables → Custom Start Command.
 6. `telegram` → последним, когда есть сессия и источники (§4–5).
 
-Совет: создать все пять репо-сервисов сразу, но у каждого сначала выставить
-Config file path и Variables, и только потом делать первый Deploy — иначе
-Railway соберёт репо «как понял» (без Dockerfile-пути) и упадёт.
+Совет: у каждого репо-сервиса сначала Variables и Start Command, потом Deploy —
+иначе первый деплой соберётся без Dockerfile-пути и упадёт.
 
 ---
 
@@ -116,6 +123,7 @@ DATABASE_URL=postgresql://${{POSTGRES_USER}}:${{POSTGRES_PASSWORD}}@${{RAILWAY_P
 
 ```env
 # --- infra (референсы) ---
+RAILWAY_DOCKERFILE_PATH=backend/Dockerfile
 DATABASE_URL=${{Postgres.DATABASE_URL}}
 REDIS_URL=${{Redis.REDIS_URL}}
 PORT=8000
@@ -193,6 +201,7 @@ Telegram-креды. Это короткое соединение раз в су
 
 ```env
 # --- infra (референсы) ---
+RAILWAY_DOCKERFILE_PATH=backend/Dockerfile
 DATABASE_URL=${{Postgres.DATABASE_URL}}
 REDIS_URL=${{Redis.REDIS_URL}}
 
@@ -260,6 +269,7 @@ TELEGRAM_FLOOD_SLEEP_THRESHOLD=60
 Только расписание. Ни ключей, ни порогов ему не нужно. `numReplicas` = 1.
 
 ```env
+RAILWAY_DOCKERFILE_PATH=backend/Dockerfile
 REDIS_URL=${{Redis.REDIS_URL}}
 DATABASE_URL=${{Postgres.DATABASE_URL}}
 
@@ -282,6 +292,7 @@ PIPELINE_INTERVAL_MINUTES=10
 Одно живое MTProto-соединение. `numReplicas` = 1. Redis не нужен.
 
 ```env
+RAILWAY_DOCKERFILE_PATH=backend/Dockerfile
 DATABASE_URL=${{Postgres.DATABASE_URL}}
 
 APP_NAME=Project Radar
@@ -308,6 +319,7 @@ TELEGRAM_FLOOD_SLEEP_THRESHOLD=60
 `NEXT_PUBLIC_API_URL` не нужен — фронт ходит только через `/api/proxy`.
 
 ```env
+RAILWAY_DOCKERFILE_PATH=web/Dockerfile
 API_URL=http://${{api.RAILWAY_PRIVATE_DOMAIN}}:8000
 ADMIN_USERNAME=admin
 ADMIN_PASSWORD=<тот же, что в api>
