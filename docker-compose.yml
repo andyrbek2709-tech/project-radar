@@ -1,0 +1,136 @@
+# Локальный стенд. На Railway те же процессы поднимаются отдельными сервисами.
+services:
+  postgres:
+    # Штатный Postgres от Railway НЕ содержит pgvector — локально и в проде
+    # используем один и тот же образ, чтобы не ловить расхождение.
+    image: pgvector/pgvector:pg17
+    container_name: radar-postgres
+    environment:
+      POSTGRES_USER: radar
+      POSTGRES_PASSWORD: radar
+      POSTGRES_DB: radar
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U radar -d radar"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: radar-redis
+    command: redis-server --appendonly yes
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  migrate:
+    build: ./backend
+    container_name: radar-migrate
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://radar:radar@postgres:5432/radar
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: alembic upgrade head
+    restart: "no"
+
+  api:
+    build: ./backend
+    container_name: radar-api
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://radar:radar@postgres:5432/radar
+      REDIS_URL: redis://redis:6379/0
+      PORT: 8000
+    ports:
+      - "8000:8000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    volumes:
+      - ./backend:/app
+    restart: unless-stopped
+
+  worker:
+    build: ./backend
+    container_name: radar-worker
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://radar:radar@postgres:5432/radar
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    command: celery -A app.tasks.celery_app worker --loglevel=info --concurrency=2
+    volumes:
+      - ./backend:/app
+    restart: unless-stopped
+
+  scheduler:
+    build: ./backend
+    container_name: radar-scheduler
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://radar:radar@postgres:5432/radar
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      redis:
+        condition: service_healthy
+    # redbeat: расписание в Redis, переживает перезапуск контейнера
+    command: >
+      celery -A app.tasks.celery_app beat --loglevel=info
+      --scheduler redbeat.RedBeatScheduler
+    volumes:
+      - ./backend:/app
+    restart: unless-stopped
+
+  telegram:
+    build: ./backend
+    container_name: radar-telegram
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://radar:radar@postgres:5432/radar
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    # Отдельный процесс: Telethon держит долгую сессию, перелогины ловят FloodWait
+    command: python -m app.collectors.telegram_runner
+    volumes:
+      - ./backend:/app
+    restart: unless-stopped
+
+  web:
+    build: ./web
+    container_name: radar-web
+    environment:
+      API_URL: http://api:8000
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-change-me}
+      PORT: 3000
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  redisdata:
