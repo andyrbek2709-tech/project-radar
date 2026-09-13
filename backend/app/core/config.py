@@ -96,6 +96,20 @@ class Settings(BaseSettings):
     AUTH_ENABLED: bool = True
 
     # ------------------------------------------------------ derived
+    @field_validator("TELEGRAM_API_ID", mode="before")
+    @classmethod
+    def _api_id_or_none(cls, v: object) -> object:
+        """Пустая строка или плейсхолдер (`PASTE_HERE_…`) → None, а не падение.
+
+        Иначе `.env.example` с `TELEGRAM_API_ID=` и Railway с незаполненным
+        плейсхолдером роняют весь сервис на импорте настроек — хотя Telegram
+        в этот момент может быть и не нужен.
+        """
+        if isinstance(v, str):
+            s = v.strip()
+            return int(s) if s.isdigit() else None
+        return v
+
     @field_validator("RADAR_DAILY_TIME")
     @classmethod
     def _check_time(cls, v: str) -> str:
