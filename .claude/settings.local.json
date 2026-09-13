@@ -1,8 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "PowerShell($env:PATH = \"D:\\\\Git\\\\cmd;D:\\\\Git\\\\mingw64\\\\bin;$env:PATH\"; git config --system --list; Write-Output \"--- remote check:\"; git ls-remote --heads https://github.com/andyrbek2709-tech/project-radar.git)",
-      "PowerShell($env:PATH = \"D:\\\\Git\\\\cmd;D:\\\\Git\\\\mingw64\\\\bin;$env:PATH\"; $env:GIT_TERMINAL_PROMPT = \"0\"; $env:GCM_INTERACTIVE = \"never\"; [Console]::OutputEncoding = [System.Text.Encoding]::UTF8; powershell -NoProfile -ExecutionPolicy Bypass -File .\\\\push.ps1)"
-    ]
-  }
-}

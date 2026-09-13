@@ -38,3 +38,6 @@ Thumbs.db
 .vscode/
 *.log
 tmp/
+
+# --- claude code (локальные разрешения) ---------------------------------------
+.claude/settings.local.json
