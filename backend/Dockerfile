@@ -9,16 +9,12 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /app
 
-RUN apt-get update \
- && apt-get install -y --no-install-recommends \
-      build-essential \
-      libpq-dev \
-      curl \
- && rm -rf /var/lib/apt/lists/*
-
+# Системных пакетов не нужно: psycopg[binary], asyncpg и uvicorn[standard]
+# приезжают готовыми wheel'ами для cp312. apt-get в билдере Railway
+# нестабилен (падает на резолве зеркал) — и это единственная причина,
+# по которой сборка вообще могла упасть.
 COPY requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt \
- && apt-get purge -y --auto-remove build-essential
+RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
@@ -29,8 +25,9 @@ USER radar
 
 EXPOSE 8000
 
+# Railway использует healthcheckPath из railway.json; этот — для docker-compose.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-  CMD curl -fsS http://127.0.0.1:${PORT:-8000}/health || exit 1
+  CMD python -c "import urllib.request,os,sys; sys.exit(0 if urllib.request.urlopen(f'http://127.0.0.1:{os.environ.get(\"PORT\",\"8000\")}/health', timeout=4).status==200 else 1)" || exit 1
 
 # Railway подставляет $PORT. Для worker/scheduler/telegram команда переопределяется.
 CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
