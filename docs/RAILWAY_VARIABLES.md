@@ -10,6 +10,69 @@
 
 ---
 
+## Создание сервисов
+
+В проекте Railway **7 сервисов**. Да, `api`, `worker`, `scheduler`, `telegram`,
+`web` — это пять отдельных сервисов из **одного и того же** GitHub-репозитория,
+задеплоенного пять раз. У каждого свои переменные и своя стартовая команда.
+
+| # | Сервис | Откуда | Публичный домен |
+|---|---|---|---|
+| 1 | `Postgres` | `+ New` → **Docker Image** → `pgvector/pgvector:pg17` | нет |
+| 2 | `Redis` | `+ New` → **Database** → Redis | нет |
+| 3 | `api` | `+ New` → **GitHub Repo** → `project-radar` | нет |
+| 4 | `worker` | тот же репо | нет |
+| 5 | `scheduler` | тот же репо | нет |
+| 6 | `telegram` | тот же репо | нет |
+| 7 | `web` | тот же репо | **да** — Settings → Networking → Generate Domain |
+
+Имена сервисов — ровно такие (регистр важен): на них ссылаются `${{...}}`
+в блоках переменных.
+
+### Как Railway понимает, что запускать
+
+Для каждого репо-сервиса: **Settings → Build → Config-as-code → Config file path**.
+Root Directory у всех оставить пустым (`/`). Dockerfile, стартовая команда и
+healthcheck берутся из файла — Custom Start Command вводить **не нужно**.
+
+| Сервис | Config file path |
+|---|---|
+| `api` | `railway.json` |
+| `worker` | `railway.worker.json` |
+| `scheduler` | `railway.scheduler.json` |
+| `telegram` | `railway.telegram.json` |
+| `web` | `railway.web.json` |
+
+Если по какой-то причине config file не подхватился (в Deploy Logs нет
+`alembic upgrade head` / `celery` / `node server.js`) — задать руками
+в **Settings → Deploy**:
+
+| Сервис | Dockerfile Path (Settings → Build) | Custom Start Command |
+|---|---|---|
+| `api` | `backend/Dockerfile` | `alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port $PORT` |
+| `worker` | `backend/Dockerfile` | `celery -A app.tasks.celery_app worker --loglevel=info --concurrency=2 --max-tasks-per-child=200` |
+| `scheduler` | `backend/Dockerfile` | `celery -A app.tasks.celery_app beat --loglevel=info --scheduler redbeat.RedBeatScheduler` |
+| `telegram` | `backend/Dockerfile` | `python -m app.collectors.telegram_runner` |
+| `web` | `web/Dockerfile` | `node server.js` |
+
+`.railway/railway.ts` — задел на Infrastructure-as-Code (после 01.12.2026);
+сейчас его подключать не нужно.
+
+### Порядок
+
+1. `Postgres` → Variables (блок §1) → Volume на `/var/lib/postgresql/data` → дождаться зелёного.
+2. `Redis` → ничего не настраивать.
+3. `api` → Config file path → Variables → Deploy → проверить `/health/deep`.
+4. `web` → Config file path → Variables → Generate Domain.
+5. `worker`, `scheduler` → Config file path → Variables.
+6. `telegram` → последним, когда есть сессия и источники (§4–5).
+
+Совет: создать все пять репо-сервисов сразу, но у каждого сначала выставить
+Config file path и Variables, и только потом делать первый Deploy — иначе
+Railway соберёт репо «как понял» (без Dockerfile-пути) и упадёт.
+
+---
+
 ## 0. Что берётся из Railway-референсов (руками не вводить)
 
 | Переменная | Значение | Где |
