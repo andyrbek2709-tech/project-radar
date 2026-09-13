@@ -1,0 +1,672 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Project Radar — доска решений</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  :root{
+    --bg:#0a0c10; --bg2:#0f1218; --card:#13171f; --card2:#181d26;
+    --line:#232a36; --line2:#2e3644;
+    --tx:#e6eaf0; --tx2:#9aa5b5; --tx3:#6b7687;
+    --ac:#5eead4; --ac2:#38bdf8;
+    --lo:#4ade80; --md:#fbbf24; --hi:#f87171;
+    --z1:#a78bfa; --z2:#60a5fa; --z3:#f0abfc; --z4:#fdba74; --z5:#5eead4;
+  }
+  html{scroll-behavior:smooth}
+  body{
+    background:radial-gradient(1200px 700px at 15% -10%,#141b26 0%,transparent 60%),var(--bg);
+    color:var(--tx);
+    font:15px/1.6 ui-sans-serif,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+    padding:0 0 220px;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:960px;margin:0 auto;padding:0 24px}
+
+  header{padding:64px 0 40px;border-bottom:1px solid var(--line)}
+  .eyebrow{
+    font-size:11px;letter-spacing:.22em;text-transform:uppercase;
+    color:var(--ac);font-weight:600;margin-bottom:14px
+  }
+  h1{font-size:38px;line-height:1.15;font-weight:650;letter-spacing:-.02em}
+  h1 span{color:var(--tx3);font-weight:400}
+  .lede{margin-top:16px;color:var(--tx2);max-width:66ch;font-size:16px}
+  .meta{margin-top:24px;display:flex;gap:10px;flex-wrap:wrap}
+  .pill{
+    font-size:12px;padding:5px 11px;border-radius:999px;
+    border:1px solid var(--line2);color:var(--tx2);background:var(--bg2)
+  }
+
+  .toc{margin:36px 0 0;display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px}
+  .toc a{
+    display:block;padding:10px 12px;border:1px solid var(--line);border-radius:8px;
+    color:var(--tx2);text-decoration:none;font-size:13px;background:var(--bg2);
+    transition:.15s
+  }
+  .toc a:hover{border-color:var(--ac);color:var(--tx)}
+  .toc a b{color:var(--tx3);font-weight:600;margin-right:8px;font-variant-numeric:tabular-nums}
+
+  section{margin-top:56px}
+  .sec-h{
+    font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--tx3);
+    font-weight:600;margin-bottom:18px;padding-bottom:10px;border-bottom:1px solid var(--line)
+  }
+
+  .card{
+    background:linear-gradient(180deg,var(--card) 0%,var(--card2) 100%);
+    border:1px solid var(--line);border-radius:14px;padding:26px 26px 22px;
+    margin-bottom:18px;position:relative;overflow:hidden
+  }
+  .card::before{
+    content:"";position:absolute;inset:0 auto 0 0;width:3px;
+    background:linear-gradient(180deg,var(--ac),transparent)
+  }
+  .card.answered::before{background:linear-gradient(180deg,var(--lo),transparent)}
+
+  .card-top{display:flex;align-items:flex-start;gap:14px;margin-bottom:8px}
+  .num{
+    flex:0 0 auto;font-size:12px;font-weight:700;color:var(--bg);
+    background:var(--ac);border-radius:6px;padding:3px 8px;
+    font-variant-numeric:tabular-nums;margin-top:3px
+  }
+  h2{font-size:19px;font-weight:620;letter-spacing:-.01em;line-height:1.35}
+  .badges{display:flex;gap:6px;flex-wrap:wrap;margin:12px 0 14px}
+  .b{font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;font-weight:650;
+     padding:3px 9px;border-radius:5px;border:1px solid}
+  .b-lo{color:var(--lo);border-color:#1e4d33;background:#0e2318}
+  .b-md{color:var(--md);border-color:#553b12;background:#241a08}
+  .b-hi{color:var(--hi);border-color:#5c2626;background:#260f0f}
+  .b-z{color:var(--z2);border-color:#1e3a5f;background:#0c1926}
+  .b-z.z-be{color:var(--z1);border-color:#3b2f5e;background:#150f26}
+  .b-z.z-db{color:var(--z3);border-color:#5a2f57;background:#230f22}
+  .b-z.z-ux{color:var(--z4);border-color:#5c3a1c;background:#241708}
+  .b-z.z-inf{color:var(--z5);border-color:#1c4d47;background:#082320}
+
+  .why{color:var(--tx2);font-size:14.5px;margin-bottom:20px;max-width:72ch}
+  .why b{color:var(--tx);font-weight:600}
+  .why code{background:#0b0e13;border:1px solid var(--line);border-radius:4px;
+            padding:1px 5px;font-size:12.5px;color:var(--ac)}
+
+  .opts{display:flex;flex-direction:column;gap:9px}
+  label.opt{
+    display:flex;gap:13px;align-items:flex-start;padding:13px 15px;
+    border:1px solid var(--line);border-radius:9px;cursor:pointer;
+    background:#0e1218;transition:.14s
+  }
+  label.opt:hover{border-color:var(--line2);background:#121721}
+  label.opt:has(input:checked){border-color:var(--ac);background:#0d1a1c;box-shadow:0 0 0 1px var(--ac) inset}
+  label.opt input{margin-top:4px;accent-color:var(--ac);width:15px;height:15px;flex:0 0 auto;cursor:pointer}
+  .opt-t{font-weight:600;font-size:14.5px}
+  .opt-t .rec{font-size:10px;letter-spacing:.08em;text-transform:uppercase;
+              color:var(--ac);border:1px solid #1c4d47;background:#082320;
+              padding:2px 7px;border-radius:4px;margin-left:9px;vertical-align:1px;font-weight:650}
+  .opt-d{color:var(--tx2);font-size:13.5px;margin-top:4px;line-height:1.55}
+  .opt-d em{color:var(--md);font-style:normal}
+
+  details{margin-top:16px;border:1px solid var(--line);border-radius:9px;background:#0b0e13}
+  summary{padding:11px 15px;cursor:pointer;font-size:13px;color:var(--tx2);
+          list-style:none;user-select:none}
+  summary::-webkit-details-marker{display:none}
+  summary::before{content:"▸ ";color:var(--ac)}
+  details[open] summary::before{content:"▾ "}
+  details[open] summary{border-bottom:1px solid var(--line)}
+  pre{padding:15px;overflow-x:auto;font:12.5px/1.65 ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+      color:#cdd6e3}
+  pre .k{color:var(--z1)} pre .s{color:var(--ac)} pre .c{color:var(--tx3)} pre .n{color:var(--z4)}
+
+  textarea.free{
+    width:100%;margin-top:14px;background:#0b0e13;border:1px solid var(--line);
+    border-radius:9px;padding:12px 14px;color:var(--tx);font:inherit;font-size:14px;
+    resize:vertical;min-height:70px
+  }
+  textarea.free:focus{outline:none;border-color:var(--ac)}
+  textarea.free::placeholder{color:var(--tx3)}
+
+  .need{border-color:#3a2f12;background:linear-gradient(180deg,#1a1710,#14120c)}
+  .need::before{background:linear-gradient(180deg,var(--md),transparent)}
+
+  .bar{
+    position:fixed;left:0;right:0;bottom:0;z-index:50;
+    background:rgba(10,12,16,.86);backdrop-filter:blur(14px);
+    border-top:1px solid var(--line2);padding:14px 24px
+  }
+  .bar-in{max-width:960px;margin:0 auto;display:flex;gap:12px;align-items:center}
+  .prog{flex:1;font-size:13px;color:var(--tx2)}
+  .prog b{color:var(--ac);font-variant-numeric:tabular-nums}
+  .track{height:4px;background:var(--line);border-radius:99px;margin-top:7px;overflow:hidden}
+  .fill{height:100%;width:0;background:linear-gradient(90deg,var(--ac),var(--ac2));
+        border-radius:99px;transition:width .3s}
+  button{
+    font:inherit;font-weight:620;font-size:14px;border-radius:9px;cursor:pointer;
+    padding:11px 20px;border:1px solid transparent;transition:.15s;white-space:nowrap
+  }
+  .btn1{background:var(--ac);color:#06231f}
+  .btn1:hover{background:#7defdc}
+  .btn2{background:transparent;color:var(--tx2);border-color:var(--line2)}
+  .btn2:hover{color:var(--tx);border-color:var(--ac)}
+  #out{display:none;max-width:960px;margin:0 auto;padding-top:12px}
+  #out textarea{
+    width:100%;height:190px;background:#06080b;border:1px solid var(--ac);border-radius:9px;
+    padding:13px;color:var(--tx);font:12.5px/1.6 ui-monospace,Menlo,Consolas,monospace;resize:vertical
+  }
+  .hint{font-size:12px;color:var(--tx3);margin-top:7px}
+  @media(max-width:640px){
+    h1{font-size:28px}.wrap{padding:0 16px}.card{padding:20px 18px}
+    .bar-in{flex-wrap:wrap}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="eyebrow">Project Radar · Зодчий</div>
+  <h1>Доска решений <span>— развилки, которые надо закрыть до сборки</span></h1>
+  <p class="lede">
+    Схема данных и архитектура спроектированы, скелет собирается. Эти 13 развилок
+    влияют на код и на счёт за Railway, поэтому решаю их не я. Выбери варианты,
+    нажми «Собрать решения» внизу и вставь результат обратно в чат.
+  </p>
+  <div class="meta">
+    <span class="pill">13 вопросов</span>
+    <span class="pill">4 требуют твоих данных</span>
+    <span class="pill">~5 минут</span>
+    <span class="pill">Рекомендации помечены</span>
+  </div>
+
+  <nav class="toc" id="toc"></nav>
+</header>
+
+<section>
+  <div class="sec-h">A · Инфраструктура и деньги</div>
+
+  <!-- 1 -->
+  <div class="card" id="q1" data-q="1" data-title="Провайдер эмбеддингов">
+    <div class="card-top"><span class="num">01</span><h2>Чем считать эмбеддинги</h2></div>
+    <div class="badges">
+      <span class="b b-md">риск: средний</span>
+      <span class="b b-z z-be">бэкенд</span>
+      <span class="b b-z z-db">БД</span>
+      <span class="b b-z z-inf">инфра · деньги</span>
+    </div>
+    <p class="why">
+      У <b>Groq эмбеддингов нет</b> — проверил на первоисточнике, страницы Embeddings в
+      console.groq.com не существует (упоминания на сторонних сайтах не подтверждаются).
+      Значит нужен отдельный провайдер. Выбор напрямую бьёт по счёту Railway: локальная
+      модель — это <b>+2&nbsp;GB RAM на воркере ≈ $20/мес</b> при тарифе $10/GB. Размерность
+      фиксируется в миграции, менять потом = пересчитывать все векторы.
+    </p>
+    <div class="opts">
+      <label class="opt"><input type="radio" name="q1" value="OpenAI text-embedding-3-small (1536)">
+        <span><span class="opt-t">OpenAI <code>text-embedding-3-small</code>, 1536<span class="rec">рекомендую</span></span>
+        <span class="opt-d">$0.02 за 1M токенов — на наших объёмах это центы в месяц. Ноль RAM, ноль времени запуска, ноль возни с моделью в образе. Дешевле, чем держать локальную модель на Railway.</span></span></label>
+      <label class="opt"><input type="radio" name="q1" value="Локально BAAI/bge-m3 (1024)">
+        <span><span class="opt-t">Локально <code>BAAI/bge-m3</code>, 1024</span>
+        <span class="opt-d">$0 за вызовы, отличный русский. Но <em>+~2 GB RAM и +1.5 GB к образу</em>, холодный старт дольше. Имеет смысл, если принципиально не отдавать тексты наружу.</span></span></label>
+      <label class="opt"><input type="radio" name="q1" value="Локально intfloat/multilingual-e5-large (1024)">
+        <span><span class="opt-t">Локально <code>multilingual-e5-large</code>, 1024</span>
+        <span class="opt-d">То же самое, чуть легче bge-m3, качество на русском сопоставимое.</span></span></label>
+    </div>
+    <details><summary>Как это выглядит в коде и почему размерность важна</summary><pre><span class="c"># app/analysis/embeddings/base.py — провайдер абстрактный, dim берётся из настроек</span>
+<span class="k">class</span> <span class="n">EmbeddingProvider</span>(Protocol):
+    dim: <span class="k">int</span>
+    <span class="k">async def</span> embed(<span class="k">self</span>, texts: list[<span class="k">str</span>]) -> list[list[<span class="k">float</span>]]: ...
+
+<span class="c"># миграция фиксирует размерность НАВСЕГДА:</span>
+sa.Column(<span class="s">"embedding"</span>, Vector(settings.EMBEDDING_DIM))
+op.execute(<span class="s">"CREATE INDEX ... USING hnsw (embedding vector_cosine_ops) "</span>
+           <span class="s">"WITH (m=16, ef_construction=64)"</span>)
+
+<span class="c"># Обе кандидатуры (1024 и 1536) &lt; 2000 — индексируются напрямую.</span>
+<span class="c"># 3072-мерные модели потребовали бы halfvec — поэтому их не рассматриваем.</span></pre></details>
+  </div>
+
+  <!-- 2 -->
+  <div class="card" id="q2" data-q="2" data-title="PostgreSQL с pgvector на Railway">
+    <div class="card-top"><span class="num">02</span><h2>Где живёт PostgreSQL с pgvector</h2></div>
+    <div class="badges">
+      <span class="b b-hi">риск: высокий</span>
+      <span class="b b-z z-db">БД</span>
+      <span class="b b-z z-inf">инфра</span>
+    </div>
+    <p class="why">
+      Проверено на docs.railway.com: <b>штатный Postgres от Railway не содержит pgvector</b>.
+      Без вектора не работает ни семантическая дедупликация, ни сравнение находки с профилем
+      проекта — то есть половина смысла Radar. Вариант выбираем один раз, переезд потом —
+      это дамп и восстановление.
+    </p>
+    <div class="opts">
+      <label class="opt"><input type="radio" name="q2" value="Свой сервис из образа pgvector/pgvector:pg17 + Railway Volume">
+        <span><span class="opt-t">Свой сервис из образа <code>pgvector/pgvector:pg17</code><span class="rec">рекомендую</span></span>
+        <span class="opt-d">Полный контроль над версией Postgres и pgvector, данные на Railway Volume. Бэкапы настраиваем сами (<code>pg_dump</code> по расписанию — добавлю таску).</span></span></label>
+      <label class="opt"><input type="radio" name="q2" value="Готовый pgvector-шаблон Railway">
+        <span><span class="opt-t">Готовый pgvector-шаблон из маркетплейса Railway</span>
+        <span class="opt-d">Разворачивается в два клика. Минус — версия образа определяется шаблоном, обновление не в наших руках.</span></span></label>
+      <label class="opt"><input type="radio" name="q2" value="Внешний managed Postgres (Supabase/Neon) с pgvector">
+        <span><span class="opt-t">Внешний managed: Supabase или Neon</span>
+        <span class="opt-d">pgvector включён, бесплатный тариф, бэкапы из коробки. Минус — <em>трафик идёт наружу</em>, задержка выше, и Railway считает egress отдельными деньгами.</span></span></label>
+    </div>
+  </div>
+
+  <!-- 3 -->
+  <div class="card" id="q3" data-q="3" data-title="Формат конфига Railway">
+    <div class="card-top"><span class="num">03</span><h2>Формат конфигурации Railway</h2></div>
+    <div class="badges">
+      <span class="b b-md">риск: средний</span>
+      <span class="b b-z z-inf">инфра</span>
+    </div>
+    <p class="why">
+      Railway <b>объявил <code>railway.json</code> / <code>railway.toml</code> устаревшими</b>:
+      существующие файлы работают до <b>01.12.2026</b>, дальше — только Infrastructure as Code
+      (<code>.railway/railway.ts</code>). До дедлайна меньше трёх месяцев.
+    </p>
+    <div class="opts">
+      <label class="opt"><input type="radio" name="q3" value="Оба формата: railway.json сейчас + .railway/railway.ts на будущее">
+        <span><span class="opt-t">Положить оба<span class="rec">рекомендую</span></span>
+        <span class="opt-d">Разворачиваемся сегодня на <code>railway.json</code>, <code>.railway/railway.ts</code> лежит готовый и включается одним переключением в дашборде. Стоит мне десять минут, тебе — ноль риска в декабре.</span></span></label>
+      <label class="opt"><input type="radio" name="q3" value="Сразу только .railway/railway.ts">
+        <span><span class="opt-t">Сразу только <code>.railway/railway.ts</code></span>
+        <span class="opt-d">Чище, без легаси. Минус — формат новый, <em>если в нём окажется незакрытый угол, первый деплой упрётся именно в него.</em></span></span></label>
+      <label class="opt"><input type="radio" name="q3" value="Только railway.json, мигрируем позже">
+        <span><span class="opt-t">Только <code>railway.json</code></span>
+        <span class="opt-d">Минимум работы сейчас, но в ноябре придётся возвращаться.</span></span></label>
+    </div>
+  </div>
+
+  <!-- 4 -->
+  <div class="card" id="q4" data-q="4" data-title="Celery beat: хранение расписания">
+    <div class="card-top"><span class="num">04</span><h2>Где beat хранит расписание</h2></div>
+    <div class="badges">
+      <span class="b b-md">риск: средний</span>
+      <span class="b b-z z-be">бэкенд</span>
+      <span class="b b-z z-inf">инфра</span>
+    </div>
+    <p class="why">
+      Celery beat по умолчанию пишет файл <code>celerybeat-schedule</code> на диск, а файловая
+      система контейнера на Railway <b>эфемерна</b> — при каждом редеплое расписание обнуляется
+      и задачи могут отработать повторно. Плюс: два инстанса beat = двойной запуск всех задач.
+    </p>
+    <div class="opts">
+      <label class="opt"><input type="radio" name="q4" value="redbeat (расписание в Redis)">
+        <span><span class="opt-t"><code>celery-redbeat</code> — расписание в Redis<span class="rec">рекомендую</span></span>
+        <span class="opt-d">Redis у нас всё равно есть. Расписание переживает редеплой, встроенная блокировка не даёт двум beat запустить одну задачу дважды. Одна зависимость.</span></span></label>
+      <label class="opt"><input type="radio" name="q4" value="PersistentScheduler на Railway Volume">
+        <span><span class="opt-t">Штатный <code>PersistentScheduler</code> + Railway Volume</span>
+        <span class="opt-d">Без новых зависимостей. Минус — том стоит денег ($0.15/GB), и защиты от двойного beat нет.</span></span></label>
+      <label class="opt"><input type="radio" name="q4" value="Заменить beat на Railway Cron">
+        <span><span class="opt-t">Отказаться от beat, использовать Railway Cron</span>
+        <span class="opt-d">Минус один постоянно работающий сервис — <em>экономия ~$5–10/мес.</em> Минус — расписание уезжает из кода в дашборд, и его уже не видно в репозитории.</span></span></label>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="sec-h">B · Сбор данных</div>
+
+  <!-- 5 -->
+  <div class="card" id="q5" data-q="5" data-title="Как запускается Telethon">
+    <div class="card-top"><span class="num">05</span><h2>Как запускать Telethon</h2></div>
+    <div class="badges">
+      <span class="b b-hi">риск: высокий</span>
+      <span class="b b-z z-be">бэкенд</span>
+      <span class="b b-z z-inf">инфра · деньги</span>
+    </div>
+    <p class="why">
+      Это <b>user-session, не бот</b> — то есть твой личный аккаунт. Telegram наказывает
+      за частые перелогины нарастающим FloodWait: семь секунд превращаются в четыре часа
+      за час экспериментов. Поднимать клиент внутри Celery-таски = логиниться на каждый прогон.
+    </p>
+    <div class="opts">
+      <label class="opt"><input type="radio" name="q5" value="Отдельный долгоживущий asyncio-сервис">
+        <span><span class="opt-t">Отдельный сервис, одно живое соединение<span class="rec">рекомендую</span></span>
+        <span class="opt-d">Один процесс держит сессию постоянно, читает по таймеру, пишет сырьё в БД. Максимально безопасно для аккаунта. Цена — <em>+1 сервис на Railway (~$5/мес)</em>.</span></span></label>
+      <label class="opt"><input type="radio" name="q5" value="Celery-таска с переиспользованием клиента в воркере">
+        <span><span class="opt-t">Celery-таска, клиент кэшируется в процессе воркера</span>
+        <span class="opt-d">Без лишнего сервиса. Но при рестарте/масштабировании воркера — новый логин, и <em>это именно тот сценарий, который ловит FloodWait</em>.</span></span></label>
+      <label class="opt"><input type="radio" name="q5" value="Telegram-коллектор внутри api-сервиса фоновой корутиной">
+        <span><span class="opt-t">Фоновая корутина внутри <code>api</code></span>
+        <span class="opt-d">Ноль дополнительных денег. Минус — сбор падает вместе с API при любом редеплое бэкенда, и они масштабируются вместе, хотя не должны.</span></span></label>
+    </div>
+    <details><summary>Ключевой фрагмент: курсор и защита от FloodWait</summary><pre><span class="k">async with</span> TelegramClient(StringSession(SESSION), api_id, api_hash) <span class="k">as</span> c:
+    c.flood_sleep_threshold = <span class="n">60</span>   <span class="c"># до 60с Telethon спит сам</span>
+    <span class="k">for</span> src <span class="k">in</span> active_sources:
+        <span class="k">try</span>:
+            <span class="k">async for</span> m <span class="k">in</span> c.iter_messages(src.entity,
+                                           min_id=cursor.last_item_id,   <span class="c"># ← не читаем прочитанное</span>
+                                           reverse=<span class="k">True</span>):
+                <span class="k">await</span> save_raw_item(m)
+                cursor.last_item_id = m.id
+        <span class="k">except</span> FloodWaitError <span class="k">as</span> e:
+            <span class="k">if</span> e.seconds &gt; <span class="n">300</span>:
+                <span class="k">await</span> pause_source(src, e.seconds)   <span class="c"># НЕ ретраим агрессивно</span>
+                <span class="k">continue</span>
+            <span class="k">await</span> asyncio.sleep(e.seconds + <span class="n">5</span>)</pre></details>
+  </div>
+
+  <!-- 6 -->
+  <div class="card" id="q6" data-q="6" data-title="Библиотека GitHub API">
+    <div class="card-top"><span class="num">06</span><h2>Чем ходить в GitHub API</h2></div>
+    <div class="badges">
+      <span class="b b-lo">риск: низкий</span>
+      <span class="b b-z z-be">бэкенд</span>
+    </div>
+    <p class="why">
+      Ограничения жёсткие: <b>search — 30 запросов/минуту</b>, core — 5000/час,
+      <b>search отдаёт максимум 1000 результатов</b> на запрос. Спасает то, что
+      <b>304 Not Modified не тратит лимит</b> — значит ETag-кэш обязателен, и библиотека
+      должна его уметь.
+    </p>
+    <div class="opts">
+      <label class="opt"><input type="radio" name="q6" value="githubkit (async, typed, встроенный HTTP-кэш)">
+        <span><span class="opt-t"><code>githubkit</code><span class="rec">рекомендую</span></span>
+        <span class="opt-d">Async, типизированные модели из OpenAPI-схемы, встроенные ретраи и HTTP-кэш поверх httpx — ETag работает «из коробки». Поддерживает и REST, и GraphQL.</span></span></label>
+      <label class="opt"><input type="radio" name="q6" value="PyGithub">
+        <span><span class="opt-t"><code>PyGithub</code></span>
+        <span class="opt-d">Зрелая, широкое покрытие, много примеров. Минус — <em>только синхронная</em>, ETag-кэш придётся делать руками.</span></span></label>
+      <label class="opt"><input type="radio" name="q6" value="Голый httpx + свой тонкий клиент">
+        <span><span class="opt-t">Голый <code>httpx</code> + свой клиент</span>
+        <span class="opt-d">Полный контроль над лимитами, ETag и GraphQL-батчами, ноль лишних абстракций. Минус — ~300 строк, которые надо написать и покрыть тестами.</span></span></label>
+    </div>
+    <details><summary>Почему GraphQL для массового добора метаданных</summary><pre><span class="c"># REST: 50 репозиториев = 50 запросов = 50 единиц лимита</span>
+<span class="c"># GraphQL: 50 репозиториев = 1 запрос ≈ 1 point (ceil(nodes/100))</span>
+query {
+  r0: repository(owner:<span class="s">"langchain-ai"</span>, name:<span class="s">"langchain"</span>) {
+    stargazerCount forkCount pushedAt
+    licenseInfo { spdxId }
+    latestRelease { tagName publishedAt }
+  }
+  r1: repository(...) { ... }   <span class="c"># ... до 50 алиасов</span>
+  rateLimit { remaining resetAt }
+}</pre></details>
+  </div>
+
+  <!-- 7 -->
+  <div class="card need" id="q7" data-q="7" data-title="Репозитории проектов для автопрофилирования" data-free="1">
+    <div class="card-top"><span class="num">07</span><h2>Репозитории твоих проектов</h2></div>
+    <div class="badges">
+      <span class="b b-lo">риск: низкий</span>
+      <span class="b b-z">нужны твои данные</span>
+      <span class="b b-z z-be">бэкенд</span>
+    </div>
+    <p class="why">
+      Автопрофилирование — это то, ради чего вся затея: система сама читает README,
+      <code>pyproject.toml</code>, <code>package.json</code>, <code>docker-compose.yml</code>,
+      миграции, структуру <code>api/services/frontend</code> и строит карточку проекта.
+      <b>Без ссылок на репозитории профили придётся заполнять руками</b>, и оценка
+      «что у нас уже есть» будет пустой.
+    </p>
+    <textarea class="free" name="q7_free" placeholder="По строке на проект, формат: slug | owner/repo | одна фраза о назначении&#10;&#10;enghub     | andyrbek2709-tech/enghub     | инженерная документация, RAG по ГОСТ/СН РК&#10;vformate   | andyrbek2709-tech/...&#10;trackparts | ...&#10;retail-gost| ...&#10;&#10;Если репозиторий приватный — напиши «private», профиль соберём вручную."></textarea>
+  </div>
+
+  <!-- 8 -->
+  <div class="card need" id="q8" data-q="8" data-title="Telegram-источники" data-free="1">
+    <div class="card-top"><span class="num">08</span><h2>Telegram-каналы и группы</h2></div>
+    <div class="badges">
+      <span class="b b-lo">риск: низкий</span>
+      <span class="b b-z">нужны твои данные</span>
+    </div>
+    <p class="why">
+      Идут в <code>TELEGRAM_SOURCE_IDS</code>. Надёжнее численные <code>-100…</code> id,
+      но <code>@username</code> тоже сгодится — я положу скрипт
+      <code>scripts/resolve_telegram_ids.py</code>, который превратит имена в id одним прогоном.
+      Ориентир: <b>15–25 источников при опросе раз в 15 минут</b> — это безопасная нагрузка.
+    </p>
+    <textarea class="free" name="q8_free" placeholder="По одному в строке, @username или -100…&#10;&#10;@ai_newz&#10;@seeallochnaya&#10;-1001234567890&#10;&#10;Можно добавить пометку «только ссылки» / «читать всё» — учту в конфиге источника."></textarea>
+  </div>
+</section>
+
+<section>
+  <div class="sec-h">C · Анализ и решения</div>
+
+  <!-- 9 -->
+  <div class="card" id="q9" data-q="9" data-title="Модель Groq по умолчанию">
+    <div class="card-top"><span class="num">09</span><h2>Модель Groq для массового слоя</h2></div>
+    <div class="badges">
+      <span class="b b-lo">риск: низкий</span>
+      <span class="b b-z z-be">бэкенд</span>
+      <span class="b b-z z-inf">деньги</span>
+    </div>
+    <p class="why">
+      Важное ограничение, проверенное на docs Groq: <b>строгий JSON-схемой режим
+      (<code>strict: true</code>) поддерживают только <code>openai/gpt-oss-20b</code> и
+      <code>openai/gpt-oss-120b</code></b>. У остальных моделей <code>strict</code> молча
+      игнорируется — то есть валидный JSON не гарантирован, а нам он нужен на каждом сообщении.
+    </p>
+    <div class="opts">
+      <label class="opt"><input type="radio" name="q9" value="gpt-oss-20b с эскалацией на 120b">
+        <span><span class="opt-t"><code>gpt-oss-20b</code>, эскалация на <code>120b</code> для сложных<span class="rec">рекомендую</span></span>
+        <span class="opt-d">$0.075/$0.30 за 1M против $0.15/$0.60 — вдвое дешевле на потоке. Если 20b вернул низкую уверенность или сломал схему, тот же вход уходит на 120b. Логика в <code>app/analysis/groq_client.py</code>.</span></span></label>
+      <label class="opt"><input type="radio" name="q9" value="Только gpt-oss-120b">
+        <span><span class="opt-t">Всегда <code>gpt-oss-120b</code></span>
+        <span class="opt-d">Проще, качество классификации выше. Вдвое дороже, но на наших объёмах это всё равно единицы долларов.</span></span></label>
+      <label class="opt"><input type="radio" name="q9" value="gpt-oss-20b + Batch API ночью (-50%)">
+        <span><span class="opt-t"><code>20b</code> + Batch API ночью</span>
+        <span class="opt-d">Batch даёт <em>−50% к цене</em> при окне 24ч. Срочное идёт синхронно, накопленное — батчем перед ночным отчётом. Максимальная экономия, чуть больше кода.</span></span></label>
+    </div>
+  </div>
+
+  <!-- 10 -->
+  <div class="card" id="q10" data-q="10" data-title="Режим Deep Analysis">
+    <div class="card-top"><span class="num">10</span><h2>Deep Analysis: авто или вручную</h2></div>
+    <div class="badges">
+      <span class="b b-md">риск: средний</span>
+      <span class="b b-z z-be">бэкенд</span>
+      <span class="b b-z z-ux">UX</span>
+    </div>
+    <p class="why">
+      В ТЗ <code>OPENAI_DEEP_ANALYSIS_ENABLED=false</code> по умолчанию — подтверждаю,
+      так и делаю. Вопрос в том, <b>что происходит с кандидатом при выключенном авто-режиме</b>.
+      Архитектурно поддержаны оба пути: результат ложится в одну таблицу, UI их не различает.
+    </p>
+    <div class="opts">
+      <label class="opt"><input type="radio" name="q10" value="MANUAL: кандидат ждёт, кнопка COPY ANALYSIS CONTEXT, ответ вставляется обратно">
+        <span><span class="opt-t">MANUAL — кнопка копирования + возврат ответа в систему<span class="rec">рекомендую</span></span>
+        <span class="opt-d">Кандидат помечается «ждёт разбора», ты жмёшь COPY ANALYSIS CONTEXT, разбираешь в ChatGPT/Codex, вставляешь ответ обратно через поле в карточке. Ноль трат, и разбор остаётся в базе, а не в чужом чате.</span></span></label>
+      <label class="opt"><input type="radio" name="q10" value="AUTO с первого дня, OPENAI_DEEP_ANALYSIS_ENABLED=true">
+        <span><span class="opt-t">AUTO сразу</span>
+        <span class="opt-d">Отчёт в 21:00 приходит уже с полным разбором. Платим за каждый deep analysis — при <code>MAX_DEEP_ANALYSES_PER_DAY=20</code> это <em>заметная строка расходов</em>.</span></span></label>
+      <label class="opt"><input type="radio" name="q10" value="Гибрид: AUTO только для CRITICAL, остальное вручную">
+        <span><span class="opt-t">Гибрид: авто только для CRITICAL</span>
+        <span class="opt-d">Самое важное разбирается само, остальное ждёт кнопки. Разумный компромисс по деньгам.</span></span></label>
+    </div>
+    <details><summary>Что именно копирует кнопка COPY ANALYSIS CONTEXT</summary><pre>Проанализируй этот repository относительно проекта EngHub.
+
+REPOSITORY: docling-project/docling  (★ 2 240, +1 470 за 14 дней, MIT)
+ЧТО ДЕЛАЕТ: конвертация PDF/DOCX в структурированный markdown с разметкой таблиц
+
+ПОЧЕМУ RADAR ЕГО ВЫБРАЛ:
+  relevance 0.91 · project_fit 0.84 · improvement 0.72 · risk 0.18
+  ближайшая существующая фича: «Парсинг PDF через pdfplumber» (similarity 0.63)
+
+НАШ ТЕКУЩИЙ СТЕК: FastAPI · PostgreSQL+pgvector · Celery · Next.js · OpenAI
+ЧТО УЖЕ РЕАЛИЗОВАНО: pdfplumber для PDF, ручная разметка таблиц, OCR через tesseract
+ИЗВЕСТНЫЕ ПРОБЛЕМЫ: таблицы в ГОСТ-документах распознаются плохо
+
+ВОПРОС: даёт ли это реальное улучшение относительно pdfplumber и стоит ли внедрять?
+Оцени: что заменяет, что дополняет, сложность миграции, новые зависимости и сервисы,
+maintenance burden, риски лицензии и безопасности, ожидаемая выгода.</pre></details>
+  </div>
+
+  <!-- 11 -->
+  <div class="card" id="q11" data-q="11" data-title="Строгость фильтра">
+    <div class="card-top"><span class="num">11</span><h2>Насколько строго резать шум</h2></div>
+    <div class="badges">
+      <span class="b b-md">риск: средний</span>
+      <span class="b b-z z-be">бэкенд</span>
+      <span class="b b-z z-ux">UX</span>
+    </div>
+    <p class="why">
+      Прямой размен: строгий порог = чистый отчёт, но риск пропустить раннюю находку;
+      мягкий = ничего не теряем, но отчёт превращается в ленту. Пороги лежат в таблице
+      <code>settings</code>, так что менять их можно без редеплоя — но стартовую точку
+      выбрать надо.
+    </p>
+    <div class="opts">
+      <label class="opt"><input type="radio" name="q11" value="Строгий: MIN_RELEVANCE=0.65, deep≥0.70, CRITICAL≥0.80">
+        <span><span class="opt-t">Строгий<span class="rec">рекомендую на старт</span></span>
+        <span class="opt-d"><code>MIN_RELEVANCE_SCORE=0.65</code>, deep при <code>≥0.70</code>, CRITICAL при <code>≥0.80</code>. Первые недели отчёты будут короткими и часто пустыми — это нормально и это признак того, что фильтр работает. Ослабить всегда проще, чем разгрести ленту.</span></span></label>
+      <label class="opt"><input type="radio" name="q11" value="Сбалансированный: MIN_RELEVANCE=0.50, deep≥0.60, CRITICAL≥0.75">
+        <span><span class="opt-t">Сбалансированный</span>
+        <span class="opt-d"><code>0.50 / 0.60 / 0.75</code>. Больше материала, больше ручной прополки.</span></span></label>
+      <label class="opt"><input type="radio" name="q11" value="Мягкий на 2 недели калибровки, потом ужесточить">
+        <span><span class="opt-t">Мягкий первые 2 недели, затем ужесточить</span>
+        <span class="opt-d"><code>0.35</code> на период калибровки — копим размеченные примеры, смотрим распределение скоров, потом ставим порог по факту. <em>Дороже по Groq</em>, зато пороги будут подобраны по твоим данным, а не наугад.</span></span></label>
+    </div>
+  </div>
+
+  <!-- 12 -->
+  <div class="card" id="q12" data-q="12" data-title="Доставка Daily Radar">
+    <div class="card-top"><span class="num">12</span><h2>Как приходит Daily Radar</h2></div>
+    <div class="badges">
+      <span class="b b-lo">риск: низкий</span>
+      <span class="b b-z z-ux">UX</span>
+      <span class="b b-z z-be">бэкенд</span>
+    </div>
+    <p class="why">
+      Отчёт в 21:00 по Asia/Aqtau, окно — предыдущие 24 часа. Вопрос в доставке:
+      <b>отчёт, за которым надо специально заходить, перестают читать через неделю</b>.
+      Можно отметить несколько вариантов.
+    </p>
+    <div class="opts">
+      <label class="opt"><input type="checkbox" name="q12" value="Web UI — раздел Dashboard">
+        <span><span class="opt-t">Web UI, раздел Dashboard<span class="rec">базовый</span></span>
+        <span class="opt-d">Полная карточка каждой находки, кнопка COPY ANALYSIS CONTEXT, фильтры по проектам. Есть в любом случае.</span></span></label>
+      <label class="opt"><input type="checkbox" name="q12" value="Telegram в «Избранное» через ту же user-session">
+        <span><span class="opt-t">Telegram — в «Избранное»<span class="rec">рекомендую добавить</span></span>
+        <span class="opt-d">Та же сессия Telethon отправляет отчёт тебе в Saved Messages. Ноль новых зависимостей, отдельный бот не нужен, отчёт всегда под рукой.</span></span></label>
+      <label class="opt"><input type="checkbox" name="q12" value="Email на andreyfuture27@gmail.com (Resend/SMTP)">
+        <span><span class="opt-t">Email</span>
+        <span class="opt-d">Нужен SMTP или Resend — <em>ещё один ключ и ещё один внешний сервис</em>.</span></span></label>
+      <label class="opt"><input type="checkbox" name="q12" value="Markdown-файл в репозиторий reports/YYYY-MM-DD.md">
+        <span><span class="opt-t">Коммит в репозиторий, <code>reports/YYYY-MM-DD.md</code></span>
+        <span class="opt-d">История отчётов версионируется и diff-ится. Требует отдельного токена с правом записи.</span></span></label>
+    </div>
+  </div>
+
+  <!-- 13 -->
+  <div class="card need" id="q13" data-q="13" data-title="Приоритет сборки" data-free="1">
+    <div class="card-top"><span class="num">13</span><h2>Что доводить до рабочего состояния первым</h2></div>
+    <div class="badges">
+      <span class="b b-md">риск: средний</span>
+      <span class="b b-z">нужно твоё решение</span>
+    </div>
+    <p class="why">
+      Скелет я соберу целиком по всем слоям. Но «собрано» и «реально крутится на Railway
+      и приносит пользу» — разные вещи. <b>Что доводим до конца в первую очередь?</b>
+    </p>
+    <div class="opts">
+      <label class="opt"><input type="radio" name="q13" value="GitHub Radar сквозняком: collector → Groq → decision → отчёт">
+        <span><span class="opt-t">Сначала GitHub Radar сквозняком<span class="rec">рекомендую</span></span>
+        <span class="opt-d">Не требует Telegram-сессии и твоего аккаунта — значит запустится сразу после заполнения <code>.env</code>. Даёт работающий вертикальный срез всего pipeline, на котором видно, правильные ли пороги.</span></span></label>
+      <label class="opt"><input type="radio" name="q13" value="Сначала Project Profiles + автопрофилирование по репозиториям">
+        <span><span class="opt-t">Сначала Project Profiles и автопрофилирование</span>
+        <span class="opt-d">Логично: без профилей оценка «относительно проекта» невозможна, всё остальное упирается в них. Но результат не виден, пока не заработает сбор.</span></span></label>
+      <label class="opt"><input type="radio" name="q13" value="Сначала Telegram — там основной поток">
+        <span><span class="opt-t">Сначала Telegram</span>
+        <span class="opt-d">Если основной поток информации у тебя именно там. Требует сгенерировать <code>TELEGRAM_SESSION_STRING</code> до первого запуска.</span></span></label>
+      <label class="opt"><input type="radio" name="q13" value="Сначала Web UI на моках, потом бэкенд под него">
+        <span><span class="opt-t">Сначала Web UI на моках</span>
+        <span class="opt-d">Быстро видно, как всё выглядит, и легче править формулировки карточек. Бэкенд подгоняется под уже утверждённый интерфейс.</span></span></label>
+    </div>
+    <textarea class="free" name="q13_free" placeholder="Дополнительно: что-то, что я не учёл? Ограничения по бюджету Railway в месяц? Нежелательные зависимости? Пиши сюда."></textarea>
+  </div>
+</section>
+
+<div id="out">
+  <textarea id="outText" readonly></textarea>
+  <div class="hint">Скопировано в буфер. Вставь в чат — разберу и продолжу сборку.</div>
+</div>
+
+</div>
+
+<div class="bar">
+  <div class="bar-in">
+    <div class="prog">
+      <div id="progText">Отвечено <b>0</b> из 13</div>
+      <div class="track"><div class="fill" id="fill"></div></div>
+    </div>
+    <button class="btn2" id="btnDef">Принять рекомендации</button>
+    <button class="btn1" id="btnGo">Собрать решения</button>
+  </div>
+</div>
+
+<script>
+(function(){
+  var cards = Array.prototype.slice.call(document.querySelectorAll('.card'));
+  var toc = document.getElementById('toc');
+
+  cards.forEach(function(c){
+    var a = document.createElement('a');
+    a.href = '#' + c.id;
+    a.innerHTML = '<b>' + String(c.dataset.q).padStart(2,'0') + '</b>' + c.dataset.title;
+    toc.appendChild(a);
+  });
+
+  function answered(c){
+    var inputs = c.querySelectorAll('input');
+    for (var i=0;i<inputs.length;i++) if (inputs[i].checked) return true;
+    var ta = c.querySelector('textarea.free');
+    return !!(ta && ta.value.trim().length > 2);
+  }
+
+  function refresh(){
+    var n = 0;
+    cards.forEach(function(c){
+      var ok = answered(c);
+      c.classList.toggle('answered', ok);
+      if (ok) n++;
+    });
+    document.getElementById('progText').innerHTML =
+      'Отвечено <b>' + n + '</b> из ' + cards.length;
+    document.getElementById('fill').style.width = (n/cards.length*100) + '%';
+  }
+
+  document.addEventListener('change', refresh);
+  document.addEventListener('input', refresh);
+
+  document.getElementById('btnDef').addEventListener('click', function(){
+    document.querySelectorAll('.rec').forEach(function(r){
+      var inp = r.closest('label.opt').querySelector('input');
+      if (inp && !inp.checked) inp.checked = true;
+    });
+    refresh();
+  });
+
+  document.getElementById('btnGo').addEventListener('click', function(){
+    var lines = ['РЕШЕНИЯ ПО PROJECT RADAR', ''];
+    cards.forEach(function(c){
+      var picked = [];
+      c.querySelectorAll('input:checked').forEach(function(i){ picked.push(i.value); });
+      var ta = c.querySelector('textarea.free');
+      var free = ta ? ta.value.trim() : '';
+
+      lines.push(String(c.dataset.q).padStart(2,'0') + '. ' + c.dataset.title);
+      if (picked.length) {
+        picked.forEach(function(p){ lines.push('    → ' + p); });
+      } else if (!free) {
+        lines.push('    → (не выбрано — реши сам, Зодчий)');
+      }
+      if (free) {
+        free.split('\n').forEach(function(l){
+          if (l.trim()) lines.push('    | ' + l.trim());
+        });
+      }
+      lines.push('');
+    });
+
+    var txt = lines.join('\n');
+    var out = document.getElementById('out');
+    var box = document.getElementById('outText');
+    out.style.display = 'block';
+    box.value = txt;
+    box.select();
+    try { navigator.clipboard.writeText(txt); } catch(e) { try { document.execCommand('copy'); } catch(e2){} }
+    out.scrollIntoView({behavior:'smooth', block:'center'});
+  });
+
+  refresh();
+})();
+</script>
+</body>
+</html>
