@@ -1,0 +1,49 @@
+# Контекст сборки — корень репозитория (Railway: Root Directory "/",
+# docker-compose: context: .). Этот файл — единственный, который Docker
+# читает; backend/.dockerignore и web/.dockerignore при таком контексте
+# не действуют.
+
+# --- секреты ---
+.env
+.env.*
+!.env.example
+*.session
+*.session-journal
+secrets/
+
+# --- git / ide / claude ---
+.git/
+.gitignore
+.github/
+.idea/
+.vscode/
+.claude/
+*.md
+docs/
+DECISIONS_RADAR.html
+push.ps1
+Makefile
+docker-compose.yml
+railway*.json
+.railway/
+
+# --- python ---
+**/__pycache__/
+**/*.py[cod]
+**/.venv/
+**/venv/
+**/.pytest_cache/
+**/.mypy_cache/
+**/.ruff_cache/
+**/htmlcov/
+**/.coverage
+**/celerybeat-schedule*
+backend/tests/
+
+# --- node ---
+**/node_modules/
+**/.next/
+**/out/
+**/.vercel/
+**/*.tsbuildinfo
+**/npm-debug.log*

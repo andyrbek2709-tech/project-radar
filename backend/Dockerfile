@@ -1,5 +1,9 @@
 # Один образ на api / worker / scheduler / telegram — различаются только командой.
 # Это экономит время сборки на Railway: собирается один раз, запускается четырежды.
+#
+# КОНТЕКСТ СБОРКИ — КОРЕНЬ РЕПОЗИТОРИЯ, не backend/. Railway собирает с Root
+# Directory "/" и dockerfilePath из railway.json; docker-compose повторяет это
+# через context: . — поэтому все COPY идут с префиксом backend/.
 FROM python:3.12-slim AS base
 
 ENV PYTHONUNBUFFERED=1 \
@@ -13,10 +17,10 @@ WORKDIR /app
 # приезжают готовыми wheel'ами для cp312. apt-get в билдере Railway
 # нестабилен (падает на резолве зеркал) — и это единственная причина,
 # по которой сборка вообще могла упасть.
-COPY requirements.txt ./
+COPY backend/requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY . .
+COPY backend/ .
 
 # Непривилегированный пользователь.
 RUN useradd --create-home --shell /bin/false radar \
