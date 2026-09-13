@@ -1,0 +1,25 @@
+{
+  "$schema": "https://railway.com/railway.schema.json",
+  "_comment": [
+    "Next.js standalone. Единственный сервис с публичным доменом.",
+    "Basic-авторизация к backend добавляется в серверном прокси Next.js",
+    "(app/api/proxy), поэтому ADMIN_USERNAME/ADMIN_PASSWORD задаются здесь",
+    "как обычные переменные, а не NEXT_PUBLIC_*.",
+    "",
+    "Для экономии можно включить Serverless-режим: фронт засыпает после",
+    "10 минут без исходящего трафика."
+  ],
+  "build": {
+    "builder": "DOCKERFILE",
+    "dockerfilePath": "web/Dockerfile",
+    "watchPatterns": ["web/**"]
+  },
+  "deploy": {
+    "startCommand": "node server.js",
+    "healthcheckPath": "/",
+    "healthcheckTimeout": 120,
+    "restartPolicyType": "ON_FAILURE",
+    "restartPolicyMaxRetries": 10,
+    "numReplicas": 1
+  }
+}

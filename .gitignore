@@ -1,0 +1,40 @@
+# --- секреты ---------------------------------------------------------------
+.env
+.env.*
+!.env.example
+*.session
+*.session-journal
+telegram.session
+secrets/
+
+# --- python ----------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+celerybeat-schedule*
+
+# --- node ------------------------------------------------------------------
+node_modules/
+.next/
+out/
+.vercel/
+*.tsbuildinfo
+next-env.d.ts
+npm-debug.log*
+yarn-error.log*
+
+# --- прочее ----------------------------------------------------------------
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.log
+tmp/
