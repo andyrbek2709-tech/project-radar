@@ -126,6 +126,8 @@ python scripts/resolve_telegram_ids.py @channel1 @channel2
 
 ### Шаг 3. Переменные
 
+> Готовые блоки `KEY=value` под каждый сервис (для Raw Editor), рекомендованные значения с обоснованием, где брать ключи и в каком порядке заполнять — в **[docs/RAILWAY_VARIABLES.md](docs/RAILWAY_VARIABLES.md)**. Ниже — только суть.
+
 Общие для `api`, `worker`, `scheduler`, `telegram`:
 
 ```
@@ -158,11 +160,10 @@ TELEGRAM_SESSION_STRING = ...
 TELEGRAM_SOURCE_IDS     = -1001234567890,-1009876543210
 ```
 
-Для `web`:
+Для `web` (и `PORT = 8000` на `api`, чтобы приватный адрес был предсказуемым):
 
 ```
 API_URL             = http://${{api.RAILWAY_PRIVATE_DOMAIN}}:8000
-NEXT_PUBLIC_API_URL = https://<домен api, если выдавал>
 ADMIN_USERNAME      = admin
 ADMIN_PASSWORD      = <тот же пароль>
 ```
