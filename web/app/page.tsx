@@ -48,6 +48,27 @@ export default function DashboardPage() {
     }
   }
 
+  /** Файл скачивается из браузера, а не отдаётся редиректом: прокси Next
+   *  не пробрасывает Content-Disposition, да и стучаться в бэкенд напрямую
+   *  из браузера нельзя — там Basic-авторизация. */
+  async function downloadDigest() {
+    try {
+      const text = await api.agentDigest();
+      const stamp = new Date().toISOString().slice(0, 10);
+      const url = URL.createObjectURL(new Blob([text], { type: "text/markdown;charset=utf-8" }));
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `radar-${stamp}.md`;
+      link.click();
+      URL.revokeObjectURL(url);
+      setToast("Файл для агента выгружен");
+      setTimeout(() => setToast(null), 3000);
+    } catch (err) {
+      setToast(`Ошибка выгрузки: ${(err as Error).message}`);
+      setTimeout(() => setToast(null), 5000);
+    }
+  }
+
   if (error) {
     return (
       <>
@@ -93,6 +114,9 @@ export default function DashboardPage() {
               {job.label}
             </button>
           ))}
+          <button className="btn-ghost btn-sm" onClick={downloadDigest}>
+            Выгрузить для агента
+          </button>
         </div>
       </div>
 
