@@ -17,7 +17,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.analysis.embeddings import get_embedding_provider
-from app.analysis.llm import GroqClient, LLMError, LLMSchemaError
+from app.analysis.llm import GroqClient, LLMError, LLMRateLimited, LLMSchemaError
 from app.analysis.prompts import (
     CLASSIFICATION_SYSTEM,
     PROJECT_MATCH_SYSTEM,
@@ -86,6 +86,72 @@ def _digest(payload: Any) -> str:
     return hashlib.sha256(
         json.dumps(payload, sort_keys=True, default=str, ensure_ascii=False).encode("utf-8")
     ).hexdigest()
+
+
+def _record_failure(
+    session: Session,
+    exc: Exception,
+    *,
+    finding_id: uuid.UUID,
+    project_id: uuid.UUID | None,
+    analysis_type: str,
+    model: str,
+    digest: str,
+) -> None:
+    """Записать неудачную попытку анализа, не плодя строк.
+
+    Ключ идемпотентности покрывает только status='ok' (см. модель), поэтому
+    отказ провайдера повторную попытку больше не блокирует. Но сам по себе он
+    и не должен накапливаться строкой на каждый прогон: при затяжном rate limit
+    это тысячи записей за ночь. Существующую запись о провале по тому же входу
+    обновляем на месте — видно последнюю причину и сколько раз не вышло.
+    """
+    status = "schema_error" if isinstance(exc, LLMSchemaError) else "api_error"
+    message = str(exc)[:500]
+
+    previous = session.execute(
+        select(FindingAnalysis).where(
+            FindingAnalysis.finding_id == finding_id,
+            FindingAnalysis.project_id == project_id,
+            FindingAnalysis.analysis_type == analysis_type,
+            FindingAnalysis.prompt_version == PROMPT_VERSION,
+            FindingAnalysis.input_digest == digest,
+            FindingAnalysis.status != "ok",
+        )
+    ).scalars().first()
+
+    if previous is not None:
+        attempts = int((previous.result or {}).get("attempts", 1)) + 1
+        previous.status = status
+        previous.error = message
+        previous.model = model
+        previous.result = {"attempts": attempts}
+        return
+
+    session.add(
+        FindingAnalysis(
+            finding_id=finding_id,
+            project_id=project_id,
+            analysis_type=analysis_type,
+            provider="groq",
+            model=model,
+            prompt_version=PROMPT_VERSION,
+            input_digest=digest,
+            result={"attempts": 1},
+            status=status,
+            error=message,
+        )
+    )
+
+
+def _load_active_projects(session: Session) -> list[Project]:
+    return list(
+        session.execute(select(Project).where(Project.is_active.is_(True))).scalars().all()
+    )
+
+
+def _negative_keywords(projects: list[Project]) -> set[str]:
+    return {kw.lower() for p in projects for kw in (p.negative_keywords or []) if kw}
 
 
 def project_to_dict(project: Project) -> dict[str, Any]:
@@ -379,19 +445,19 @@ def _classify(
             schema_model=GroqClassification,
             schema_name="radar_classification",
         )
+    except LLMRateLimited:
+        # Не поломка находки, а закрытое окно провайдера. Записывать её как
+        # неудачный анализ нельзя: вернёмся к ней следующим прогоном.
+        raise
     except (LLMError, LLMSchemaError) as exc:
-        session.add(
-            FindingAnalysis(
-                finding_id=finding.id,
-                analysis_type=AnalysisType.GROQ_CLASSIFICATION,
-                provider="groq",
-                model=groq.model,
-                prompt_version=PROMPT_VERSION,
-                input_digest=digest,
-                result={},
-                status="schema_error" if isinstance(exc, LLMSchemaError) else "api_error",
-                error=str(exc)[:500],
-            )
+        _record_failure(
+            session,
+            exc,
+            finding_id=finding.id,
+            project_id=None,
+            analysis_type=AnalysisType.GROQ_CLASSIFICATION,
+            model=groq.model,
+            digest=digest,
         )
         log.warning("groq_classification_failed", finding_id=str(finding.id), error=str(exc)[:200])
         return None
@@ -568,20 +634,17 @@ def _analyse_match(
             schema_model=ProjectMatchAnalysis,
             schema_name="project_match",
         )
+    except LLMRateLimited:
+        raise
     except (LLMError, LLMSchemaError) as exc:
-        session.add(
-            FindingAnalysis(
-                finding_id=finding.id,
-                project_id=project.id,
-                analysis_type=AnalysisType.PROJECT_MATCH,
-                provider="groq",
-                model=groq.model,
-                prompt_version=PROMPT_VERSION,
-                input_digest=digest,
-                result={},
-                status="schema_error" if isinstance(exc, LLMSchemaError) else "api_error",
-                error=str(exc)[:500],
-            )
+        _record_failure(
+            session,
+            exc,
+            finding_id=finding.id,
+            project_id=project.id,
+            analysis_type=AnalysisType.PROJECT_MATCH,
+            model=groq.model,
+            digest=digest,
         )
         log.warning(
             "project_match_llm_failed",
@@ -728,30 +791,30 @@ def run_pipeline(session: Session, *, batch_size: int | None = None) -> dict[str
     batch_size = batch_size or settings.PIPELINE_BATCH_SIZE
     stats = PipelineStats()
 
-    projects = session.execute(
-        select(Project).where(Project.is_active.is_(True))
-    ).scalars().all()
+    projects = _load_active_projects(session)
     if not projects:
         log.warning("pipeline_no_projects")
         return {"status": "skipped", "reason": "no_active_projects"}
 
-    negative_keywords = {
-        kw.lower()
-        for p in projects
-        for kw in (p.negative_keywords or [])
-        if kw
-    }
+    negative_keywords = _negative_keywords(projects)
 
-    items = session.execute(
-        select(RawItem)
+    # Берём идентификаторы, а не объекты. Любой rollback внутри цикла гасит
+    # identity map, и сложенные заранее ORM-объекты после него протухают:
+    # обращение к откаченной находке роняло весь прогон с ObjectDeletedError.
+    item_ids = session.execute(
+        select(RawItem.id)
         .where(RawItem.processing_status == ProcessingStatus.PENDING)
         .order_by(RawItem.collected_at.asc())
         .limit(batch_size)
     ).scalars().all()
 
     groq = GroqClient()
+    rate_limited = False
 
-    for item in items:
+    for item_id in item_ids:
+        item = session.get(RawItem, item_id)
+        if item is None or item.processing_status != ProcessingStatus.PENDING:
+            continue
         try:
             process_raw_item(
                 session,
@@ -762,26 +825,56 @@ def run_pipeline(session: Session, *, batch_size: int | None = None) -> dict[str
                 stats=stats,
             )
             session.flush()
+        except LLMRateLimited as exc:
+            # Окно провайдера закрыто — остальная пачка упрётся в то же самое.
+            # Сырьё оставляем в pending: следующий прогон возьмёт его нетронутым.
+            session.rollback()
+            projects = _load_active_projects(session)
+            rate_limited = True
+            log.warning(
+                "pipeline_rate_limited_stop",
+                raw_item_id=str(item_id),
+                processed=stats.processed,
+                retry_after=exc.retry_after,
+            )
+            break
         except Exception as exc:  # noqa: BLE001
             session.rollback()
-            fresh = session.get(RawItem, item.id)
+            # После отката identity map пуст, а список projects — детачнут.
+            projects = _load_active_projects(session)
+            fresh = session.get(RawItem, item_id)
             if fresh is not None:
                 fresh.processing_status = ProcessingStatus.ERROR
                 fresh.error = str(exc)[:500]
             stats.errors += 1
-            log.warning("pipeline_item_failed", raw_item_id=str(item.id), error=str(exc)[:300])
+            log.warning("pipeline_item_failed", raw_item_id=str(item_id), error=str(exc)[:300])
 
     # Второй проход: находки, возвращённые на стол.
     #
     # Без него вся ветка «REJECTED не навсегда» мертва: сработавший
     # reassessment-триггер и promote_review_queue ставят статус ANALYZED,
     # но первый проход смотрит только на новое сырьё и таких находок не видит.
-    reanalysed = reanalyse_pending(
-        session, projects=list(projects), groq=groq, stats=stats, limit=max(10, batch_size // 4)
-    )
+    reanalysed = 0
+    if not rate_limited:
+        try:
+            reanalysed = reanalyse_pending(
+                session,
+                projects=list(projects),
+                groq=groq,
+                stats=stats,
+                limit=max(10, batch_size // 4),
+            )
+        except LLMRateLimited as exc:
+            session.rollback()
+            rate_limited = True
+            log.warning("pipeline_rate_limited_stop", stage="reanalyse", retry_after=exc.retry_after)
 
-    log.info("pipeline_done", reanalysed=reanalysed, **stats.as_dict())
-    return {"status": "ok", "reanalysed": reanalysed, **stats.as_dict()}
+    log.info("pipeline_done", reanalysed=reanalysed, rate_limited=rate_limited, **stats.as_dict())
+    return {
+        "status": "rate_limited" if rate_limited else "ok",
+        "reanalysed": reanalysed,
+        **stats.as_dict(),
+    }
 
 
 def reanalyse_pending(

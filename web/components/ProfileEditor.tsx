@@ -54,6 +54,11 @@ function initialState(project: Project) {
   return state;
 }
 
+/** Отпечаток серверных значений: по нему видно, что профиль перезаписали снаружи. */
+function signatureOf(project: Project): string {
+  return JSON.stringify(Object.values(initialState(project)));
+}
+
 export default function ProfileEditor({
   project,
   onSaved,
@@ -64,6 +69,18 @@ export default function ProfileEditor({
   const [form, setForm] = useState<Record<string, string>>(() => initialState(project));
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
+
+  // Состояние формы инициализируется один раз, а профиль меняется снаружи:
+  // техревизия переписывает поля на сервере, и без пересинхронизации форма
+  // продолжала бы показывать старое — вплоть до сохранения устаревших значений
+  // поверх свежих. Сверяемся с отпечатком серверных значений: перечитываем
+  // форму, только когда изменился он, а не когда пользователь просто печатает.
+  const [syncedFrom, setSyncedFrom] = useState(() => signatureOf(project));
+  const signature = signatureOf(project);
+  if (signature !== syncedFrom) {
+    setSyncedFrom(signature);
+    setForm(initialState(project));
+  }
 
   // Дифф считаем на каждый рендер: он же решает, показывать ли кнопку активной.
   const changes = useMemo(() => {

@@ -56,6 +56,18 @@ class LLMSchemaError(LLMError):
     """Модель вернула то, что не легло в pydantic-схему."""
 
 
+class LLMRateLimited(LLMError):
+    """429 от провайдера. Отличается от прочих ошибок тем, что пройдёт само.
+
+    Вызывающий код по этому типу понимает, что находка не сломана и повторять
+    её имеет смысл — но не прямо сейчас, а следующим прогоном.
+    """
+
+    def __init__(self, message: str, retry_after: float) -> None:
+        self.retry_after = retry_after
+        super().__init__(message)
+
+
 @dataclass(slots=True)
 class LLMResult:
     parsed: Any
@@ -88,15 +100,47 @@ def _extract_json(text: str) -> dict[str, Any]:
         raise
 
 
+def _retry_after_seconds(headers: Any, default: float = 60.0) -> float:
+    """retry-after у Groq — секунды, иногда дробные."""
+    raw = headers.get("retry-after")
+    if raw is None:
+        return default
+    try:
+        return max(0.0, float(str(raw).strip()))
+    except ValueError:
+        return default
+
+
 class GroqClient:
     """Первый дешёвый массовый слой. Финального решения о внедрении не принимает."""
 
     provider = "groq"
 
+    # Состояние лимита — на класс, а не на экземпляр: 429 прилетает на аккаунт,
+    # и новый GroqClient внутри того же воркера про чужой лимит обязан знать.
+    # Иначе выходит то, что случилось на проде: сотни запросов подряд, каждый
+    # ловит 429 с retry-after до 29 секунд, ни один не доходит.
+    _blocked_until: float = 0.0
+    _last_call_at: float = 0.0
+
     def __init__(self, api_key: str | None = None, model: str | None = None) -> None:
         self.api_key = api_key or settings.GROQ_API_KEY
         self.model = model or settings.GROQ_MODEL
         self.escalation_model = settings.GROQ_ESCALATION_MODEL
+
+    @classmethod
+    def _block_for(cls, seconds: float) -> None:
+        cls._blocked_until = max(cls._blocked_until, time.monotonic() + seconds)
+
+    @classmethod
+    def _wait_for_slot(cls) -> None:
+        """Дождаться и конца паузы по 429, и минимального интервала между запросами."""
+        now = time.monotonic()
+        until = max(cls._blocked_until, cls._last_call_at + settings.GROQ_MIN_INTERVAL_SECONDS)
+        delay = until - now
+        if delay > 0:
+            time.sleep(delay)
+        cls._last_call_at = time.monotonic()
 
     @property
     def enabled(self) -> bool:
@@ -166,25 +210,41 @@ class GroqClient:
             "response_format": response_format,
         }
 
-        started = time.monotonic()
-        with httpx.Client(timeout=settings.GROQ_TIMEOUT_SECONDS) as client:
-            resp = client.post(
-                GROQ_URL,
-                headers={
-                    "Authorization": f"Bearer {self.api_key}",
-                    "Content-Type": "application/json",
-                },
-                json=payload,
-            )
-        latency_ms = int((time.monotonic() - started) * 1000)
+        # Две попытки: первая может прийтись на ещё не остывший лимит.
+        # Ждём ровно столько, сколько просит сам провайдер, и не дольше потолка.
+        for attempt in (1, 2):
+            self._wait_for_slot()
+
+            started = time.monotonic()
+            with httpx.Client(timeout=settings.GROQ_TIMEOUT_SECONDS) as client:
+                resp = client.post(
+                    GROQ_URL,
+                    headers={
+                        "Authorization": f"Bearer {self.api_key}",
+                        "Content-Type": "application/json",
+                    },
+                    json=payload,
+                )
+            latency_ms = int((time.monotonic() - started) * 1000)
+
+            if resp.status_code != 429:
+                break
+
+            retry_after = _retry_after_seconds(resp.headers)
+            # Пауза ставится всегда: следующий запрос из этого воркера, даже
+            # по другой находке, в закрытое окно уже не полезет.
+            self._block_for(retry_after)
+
+            if attempt == 2 or retry_after > settings.GROQ_MAX_RATE_LIMIT_WAIT_SECONDS:
+                raise LLMRateLimited(
+                    f"Groq rate limit, retry-after={retry_after:g}s", retry_after=retry_after
+                )
+            log_groq.warning("groq_rate_limited_waiting", seconds=retry_after, model=model)
 
         rate_limit = {
             k: v for k, v in resp.headers.items() if k.lower().startswith("x-ratelimit")
         }
 
-        if resp.status_code == 429:
-            retry_after = resp.headers.get("retry-after", "60")
-            raise LLMError(f"Groq rate limit, retry-after={retry_after}s")
         if resp.status_code >= 400:
             raise LLMError(f"Groq HTTP {resp.status_code}: {resp.text[:300]}")
 

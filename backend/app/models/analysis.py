@@ -73,18 +73,25 @@ class FindingAnalysis(Base):
     # В PostgreSQL NULL != NULL, поэтому обычный UNIQUE с nullable project_id
     # не защитил бы записи классификации и repo-аудита (там project_id IS NULL)
     # и один и тот же вход оплачивался бы повторно.
+    #
+    # Оба индекса покрывают ТОЛЬКО status='ok'. Идемпотентность здесь про то,
+    # чтобы не платить дважды за удавшийся ответ; отказ по rate limit ответом
+    # не является. Пока status в условие не входил, провал занимал ключ навсегда:
+    # кэш искал строго status='ok' и промахивался, а вставка повторной попытки
+    # падала на uq_analysis_idempotency_global. Находка выбывала из обработки
+    # насовсем — даже после того, как лимит провайдера отпускал.
     __table_args__ = (
         Index(
             "uq_analysis_idempotency_project",
             "finding_id", "project_id", "analysis_type", "prompt_version", "input_digest",
             unique=True,
-            postgresql_where=text("project_id IS NOT NULL"),
+            postgresql_where=text("project_id IS NOT NULL AND status = 'ok'"),
         ),
         Index(
             "uq_analysis_idempotency_global",
             "finding_id", "analysis_type", "prompt_version", "input_digest",
             unique=True,
-            postgresql_where=text("project_id IS NULL"),
+            postgresql_where=text("project_id IS NULL AND status = 'ok'"),
         ),
         Index("ix_analyses_finding_type", "finding_id", "analysis_type"),
         Index("ix_analyses_created", "created_at"),

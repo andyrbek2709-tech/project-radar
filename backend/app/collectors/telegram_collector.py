@@ -50,8 +50,21 @@ def build_client():  # noqa: ANN201
         )
 
     TelegramClient, StringSession = _require_telethon()
+    try:
+        session = StringSession(settings.TELEGRAM_SESSION_STRING)
+    except Exception as exc:  # noqa: BLE001
+        # StringSession декодирует строку из base64 и роняет binascii.Error
+        # с текстом вроде «Incorrect padding». Сам по себе он не говорит ни
+        # что за строка, ни что с ней делать, а в таблице «Коллекторы» видна
+        # именно эта фраза — поэтому подменяем на внятную.
+        raise TelegramUnavailable(
+            f"TELEGRAM_SESSION_STRING не декодируется ({type(exc).__name__}: {str(exc)[:80]}). "
+            "Строка обрезана или потеряла символы при копировании. "
+            "Перевыпусти: python scripts/gen_telegram_session.py"
+        ) from exc
+
     client = TelegramClient(
-        StringSession(settings.TELEGRAM_SESSION_STRING),
+        session,
         settings.TELEGRAM_API_ID,
         settings.TELEGRAM_API_HASH,
     )
