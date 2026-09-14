@@ -824,10 +824,21 @@ def run_pipeline(session: Session, *, batch_size: int | None = None) -> dict[str
                 groq=groq,
                 stats=stats,
             )
-            session.flush()
+            # Коммит на КАЖДЫЙ элемент, не flush.
+            #
+            # Пачка — это не транзакция. Элементы независимы, и разобранное
+            # обязано пережить сбой на следующем. При flush работа остаётся
+            # незафиксированной, и rollback ниже сносил всю пачку целиком:
+            # пять разобранных находок исчезали из-за шестой, упёршейся
+            # в лимит Groq, сырьё возвращалось в pending, а следующий прогон
+            # брал те же элементы и повторял всё с начала. Очередь стояла
+            # намертво при исправно работающем пайплайне.
+            session.commit()
         except LLMRateLimited as exc:
             # Окно провайдера закрыто — остальная пачка упрётся в то же самое.
-            # Сырьё оставляем в pending: следующий прогон возьмёт его нетронутым.
+            # Откатывается только текущий элемент: он остаётся в pending и
+            # достанется следующему прогону. Всё разобранное до него уже
+            # зафиксировано и не теряется.
             session.rollback()
             projects = _load_active_projects(session)
             rate_limited = True
@@ -846,6 +857,9 @@ def run_pipeline(session: Session, *, batch_size: int | None = None) -> dict[str
             if fresh is not None:
                 fresh.processing_status = ProcessingStatus.ERROR
                 fresh.error = str(exc)[:500]
+                # Пометку тоже фиксируем сразу: иначе её унесёт откат,
+                # вызванный любым следующим элементом пачки.
+                session.commit()
             stats.errors += 1
             log.warning("pipeline_item_failed", raw_item_id=str(item_id), error=str(exc)[:300])
 
@@ -890,15 +904,19 @@ def reanalyse_pending(
     Сюда попадают: сработавшие триггеры переоценки, вернувшиеся из REVIEW LATER
     и те, у кого в прошлый раз не удалось ни одно сопоставление с проектом.
     """
-    findings = session.execute(
-        select(Finding)
+    # Идентификаторы, а не объекты: rollback внутри цикла гасит identity map.
+    finding_ids = session.execute(
+        select(Finding.id)
         .where(Finding.status == FindingStatus.ANALYZED)
         .order_by(Finding.updated_at.asc())
         .limit(limit)
     ).scalars().all()
 
     done = 0
-    for finding in findings:
+    for finding_id in finding_ids:
+        finding = session.get(Finding, finding_id)
+        if finding is None:
+            continue
         repository = (
             session.get(Repository, finding.repository_id) if finding.repository_id else None
         )
@@ -911,12 +929,20 @@ def reanalyse_pending(
                 groq=groq,
                 stats=stats,
             )
-            session.flush()
+            # Как и в основном цикле: каждая находка фиксируется отдельно,
+            # чтобы сбой на следующей не унёс уже сделанную работу.
+            session.commit()
             done += 1
+        except LLMRateLimited:
+            # Пробрасываем: решение остановиться принимает run_pipeline.
+            # Широкий except ниже проглотил бы лимит и погнал бы остаток
+            # пачки в то же закрытое окно.
+            session.rollback()
+            raise
         except Exception as exc:  # noqa: BLE001
             session.rollback()
             stats.errors += 1
-            log.warning("reanalyse_failed", finding_id=str(finding.id), error=str(exc)[:300])
+            log.warning("reanalyse_failed", finding_id=str(finding_id), error=str(exc)[:300])
 
     return done
 
