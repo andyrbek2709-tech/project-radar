@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Решения по выгрузке радара · 14.09.2026</title>
+<style>
+:root{
+  --bg:#0f1115; --surface:#171a21; --surface2:#1e222b; --line:#2a2f3a;
+  --fg:#e8eaf0; --muted:#98a0b0; --accent:#6ea8fe; --accent-d:#3b6fd4;
+  --ok:#4ec98a; --warn:#e5b567; --risk:#e57373;
+}
+@media (prefers-color-scheme: light){
+  :root{--bg:#f6f7f9;--surface:#fff;--surface2:#f0f2f5;--line:#dfe3ea;
+        --fg:#171a21;--muted:#5c6575;--accent:#2f6fd0;--accent-d:#1f4f9c;}
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);
+  font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Inter,sans-serif;
+  padding:0 16px 140px}
+.wrap{max-width:900px;margin:0 auto}
+header{padding:28px 0 8px}
+h1{font-size:23px;margin:0 0 6px;letter-spacing:-.01em}
+.sub{color:var(--muted);font-size:14px;margin:0}
+.rootcause{background:var(--surface);border:1px solid var(--line);
+  border-left:3px solid var(--risk);border-radius:10px;padding:14px 16px;margin:18px 0 6px}
+.rootcause b{color:var(--risk)}
+.rootcause code{background:var(--surface2);padding:1px 5px;border-radius:4px;font-size:12.5px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:12px;
+  padding:18px;margin:16px 0}
+.card h2{font-size:16.5px;margin:0 0 4px;letter-spacing:-.01em}
+.card .why{color:var(--muted);font-size:13.5px;margin:0 0 12px}
+.badges{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 10px}
+.b{font-size:11px;padding:2px 8px;border-radius:99px;border:1px solid var(--line);
+  color:var(--muted);background:var(--surface2);white-space:nowrap}
+.b.low{border-color:#2e5c44;color:var(--ok)}
+.b.mid{border-color:#5c4c2a;color:var(--warn)}
+.b.high{border-color:#5c3030;color:var(--risk)}
+.b.zone{border-color:var(--accent-d);color:var(--accent)}
+.opt{display:block;background:var(--surface2);border:1px solid var(--line);
+  border-radius:9px;padding:11px 13px;margin:7px 0;cursor:pointer;transition:.12s}
+.opt:hover{border-color:var(--accent-d)}
+.opt input{margin:0 9px 0 0;vertical-align:top;accent-color:var(--accent)}
+.opt .t{font-weight:600;font-size:14px}
+.opt .d{display:block;color:var(--muted);font-size:13px;margin:4px 0 0 24px}
+.rec{color:var(--ok);font-size:11px;border:1px solid #2e5c44;border-radius:99px;
+  padding:1px 7px;margin-left:6px;white-space:nowrap}
+.multi{color:var(--accent);font-size:12px;margin:0 0 8px}
+details{margin:10px 0 0;font-size:13px}
+summary{cursor:pointer;color:var(--accent);font-size:13px}
+pre{background:var(--surface2);border:1px solid var(--line);border-radius:8px;
+  padding:10px;overflow-x:auto;font-size:12px;margin:8px 0 0}
+.free{margin-top:11px}
+.free label{display:block;font-size:12.5px;color:var(--muted);margin-bottom:5px}
+textarea,input[type=text]{width:100%;background:var(--surface2);color:var(--fg);
+  border:1px solid var(--line);border-radius:8px;padding:9px 11px;
+  font:14px/1.5 inherit;resize:vertical}
+textarea:focus,input:focus{outline:none;border-color:var(--accent)}
+.bigcard{border-left:3px solid var(--accent)}
+.bar{position:fixed;left:0;right:0;bottom:0;background:var(--surface);
+  border-top:1px solid var(--line);padding:11px 16px;display:flex;gap:10px;
+  justify-content:center;flex-wrap:wrap;z-index:9}
+button{background:var(--accent);color:#fff;border:0;border-radius:9px;
+  padding:11px 20px;font:600 14px inherit;cursor:pointer}
+button.sec{background:var(--surface2);color:var(--fg);border:1px solid var(--line)}
+button:active{transform:translateY(1px)}
+#outWrap{display:none;margin:20px 0 0}
+#out{min-height:230px;font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace}
+.note{color:var(--muted);font-size:12.5px;margin:8px 0 0}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>Решения по выгрузке радара · 14.09.2026</h1>
+  <p class="sub">48 находок проверены по коду. Отметь вариант и, если нужно, допиши своё — собирается вместе.</p>
+</header>
+
+<div class="rootcause">
+  <b>Сначала главное.</b> Все 48 карточек описывают EngHub как «Python, FastAPI, PostgreSQL,
+  построчный разбор документов». Фактически EngHub — Express + TypeScript, OCR на Tesseract.js
+  с фолбэком в OpenAI Vision, поиск на pgvector. Профиль в радаре заведён с
+  <code>github_repository: None</code> (<code>seed_projects.py:35</code>), техревизия никогда
+  не запускалась, стек в промпт уходил пустым — и модель его дописала сама.
+  Поэтому карточки ниже начинаются с профиля, а не с находок.
+</div>
+
+<!-- 1 -->
+<div class="card" data-q="1. Профиль EngHub в радаре">
+  <h2>1. Чинить профиль EngHub</h2>
+  <p class="why">Пока стек в профиле неверный, любая следующая выгрузка будет такой же. В комментарии к сиду указан ещё и не тот репозиторий — <code>andyrbek2709-tech/enghub</code>, который в CLAUDE.md помечен «НЕ использовать».</p>
+  <div class="badges"><span class="b low">риск низкий</span><span class="b zone">радар / БД</span><span class="b zone">конфиг</span></div>
+  <label class="opt"><input type="radio" name="q1" value="Прописать ai-institut + запустить техревизию + вручную дописать current_stack и things_not_needed"><span class="t">Прописать <code>ai-institut</code>, запустить техревизию, руками дописать стек<span class="rec">рекомендую</span></span><span class="d">Автоаудит читает только корень репо, а у ai-institut в корневом package.json одна строка про exceljs — сам он стек не увидит. Поэтому: репо + ревизия + ручная правка <code>current_stack</code> и <code>things_not_needed</code> (туда — «не Python-библиотеки», «эмбеддинги залочены на text-embedding-3-small»).</span></label>
+  <label class="opt"><input type="radio" name="q1" value="Только вручную заполнить профиль, без техревизии"><span class="t">Только руками, без техревизии</span><span class="d">Быстрее и предсказуемее, но профиль перестанет обновляться сам при изменениях в репо.</span></label>
+  <label class="opt"><input type="radio" name="q1" value="Научить profiler.py заходить в подкаталоги services/* и apps/*"><span class="t">Научить <code>profiler.py</code> читать подкаталоги монорепо</span><span class="d">Правка самого радара: сейчас <code>AUDIT_FILES</code> читаются только из корня. Чинит проблему для всех монорепо разом, но это уже разработка, а не конфиг.</span></label>
+  <div class="free"><label>Свой вариант / уточнение</label><input type="text" name="q1_free" placeholder="…"></div>
+</div>
+
+<!-- 2 -->
+<div class="card" data-q="2. Непокрытые проекты">
+  <h2>2. Какие проекты завести в радар</h2>
+  <p class="why">Все 48 находок ушли в EngHub, потому что конкурентов нет: у <code>vformate</code> и <code>trackparts</code> профиль пустой (<code>description: ""</code>), а lohotron, zharnama и gost-magazin-rosta не заведены вовсе.</p>
+  <div class="badges"><span class="b low">риск низкий</span><span class="b zone">радар / БД</span><span class="b mid">расход токенов растёт</span></div>
+  <p class="multi">можно несколько</p>
+  <label class="opt"><input type="checkbox" name="q2" value="track-parts"><span class="t">track-parts<span class="rec">рекомендую</span></span><span class="d">Groq Vision распознаёт путевые листы и дефектные ведомости — это ровно тема, по которой радар уже собирает находки. Сейчас они все уходят в EngHub мимо адресата.</span></label>
+  <label class="opt"><input type="checkbox" name="q2" value="zharnama"><span class="t">zharnama<span class="rec">рекомендую</span></span><span class="d">Семь отдельных сервисов на OpenAI + Higgsfield. Наблюдаемость промптов и стоимость — живая боль, находки по ней есть (opik).</span></label>
+  <label class="opt"><input type="checkbox" name="q2" value="Sas_vformate"><span class="t">Sas_vformate</span><span class="d">Расчёт зарплаты; из открытого — выгрузки Excel/PDF и Telegram-бот. Тем для радара мало.</span></label>
+  <label class="opt"><input type="checkbox" name="q2" value="gost-magazin-rosta"><span class="t">gost-magazin-rosta</span><span class="d">Telegram + Groq Vision/STT по товарам. Пересекается с track-parts, часть находок будет дублироваться.</span></label>
+  <label class="opt"><input type="checkbox" name="q2" value="lohotron"><span class="t">lohotron</span><span class="d">Paper-trading. Тема далека от остальных, и в negative_keywords у всех проектов стоит «trading» — придётся разводить фильтры.</span></label>
+  <label class="opt"><input type="checkbox" name="q2" value="Пока никого, сначала починить EngHub"><span class="t">Пока никого — сначала EngHub</span><span class="d">Одна выгрузка = деньги на Groq/OpenAI. Сначала убедиться, что исправленный профиль даёт осмысленную выдачу.</span></label>
+  <div class="free"><label>Свой вариант / уточнение</label><input type="text" name="q2_free" placeholder="…"></div>
+</div>
+
+<!-- 3 -->
+<div class="card" data-q="3. Мёртвый services/document-parser">
+  <h2>3. Что делать с <code>services/document-parser</code></h2>
+  <p class="why">Python/FastAPI/pdfplumber, ни одной ссылки из api-server и фронта, нет Railway-конфига. <code>STATE.md:4270</code> сам числит его среди недеплоящихся. Именно по нему радар решил, что EngHub — на FastAPI.</p>
+  <div class="badges"><span class="b mid">риск средний</span><span class="b zone">бэк</span><span class="b zone">репо</span></div>
+  <label class="opt"><input type="radio" name="q3" value="Оставить код, но пометить как неиспользуемый в STATE.md и вывести из профиля радара"><span class="t">Оставить, но явно пометить «не используется»<span class="rec">рекомендую</span></span><span class="d">Удаление — деструктивная правка по правилу 17б, а в нём лежит рабочая модель трассировки (<code>models/traceability.py</code>), которая ещё пригодится для карточки 6. Пометки в STATE.md хватает, чтобы он больше никого не путал.</span></label>
+  <label class="opt"><input type="radio" name="q3" value="Удалить из репозитория (история сохранится в git)"><span class="t">Удалить из репозитория</span><span class="d">Чище, история в git остаётся. Но вместе с ним уходят детерминированные тесты парсинга, которые писались отдельно.</span></label>
+  <label class="opt"><input type="radio" name="q3" value="Оживить: задеплоить и подключить к api-server"><span class="t">Оживить и подключить к api-server</span><span class="d">Только если решение по карточке 5 — «отдельный Python-сервис парсинга». Тогда это готовый каркас, а не новый сервис с нуля.</span></label>
+  <div class="free"><label>Свой вариант / уточнение</label><input type="text" name="q3_free" placeholder="…"></div>
+</div>
+
+<!-- 4 -->
+<div class="card" data-q="4. Единый слой LLM в EngHub">
+  <h2>4. Единый слой вызовов LLM в EngHub</h2>
+  <p class="why">Три провайдера (OpenAI, GLM/Z.ai, Groq) вызываются из <code>services/llm.ts</code>, <code>utils/aiProvider.ts</code>, <code>cadLlmService.ts</code>, <code>docReviewLlm.ts</code> и <code>routes/generate-protocol.ts</code> — единой точки нет. Находки №12 (litellm) и №26 (any-llm) бьют ровно сюда.</p>
+  <div class="badges"><span class="b mid">риск средний</span><span class="b zone">бэк</span><span class="b zone">LLM</span></div>
+  <label class="opt"><input type="radio" name="q4" value="Свой тонкий роутер на TypeScript, без новых зависимостей"><span class="t">Свой тонкий роутер на TypeScript<span class="rec">рекомендую</span></span><span class="d">Все три провайдера уже говорят по OpenAI-совместимому протоколу — нужен один модуль на ~150 строк с выбором провайдера, ретраями и учётом токенов. litellm — Python: это отдельный прокси-сервис в архитектуре, где его сейчас нет.</span></label>
+  <label class="opt"><input type="radio" name="q4" value="any-llm (#26) как npm-зависимость"><span class="t">any-llm (#26)</span><span class="d">Apache-2.0, от mozilla-ai. Но это тоже Python; JS-вариант придётся проверять отдельно по правилу 15.</span></label>
+  <label class="opt"><input type="radio" name="q4" value="litellm (#12) отдельным прокси-сервисом на Railway"><span class="t">litellm (#12) прокси-сервисом</span><span class="d">Самый функциональный вариант (балансировка, лимиты, учёт расходов из коробки), но +1 сервис на Railway и лицензия NOASSERTION — нужна проверка.</span></label>
+  <label class="opt"><input type="radio" name="q4" value="Не трогать, работает"><span class="t">Не трогать</span><span class="d">Разброс вызовов пока ничего не ломает. Цена — каждый новый провайдер придётся вписывать в пять мест.</span></label>
+  <div class="free"><label>Свой вариант / уточнение</label><input type="text" name="q4_free" placeholder="…"></div>
+</div>
+
+<!-- 5 -->
+<div class="card" data-q="5. Парсинг PDF и OCR">
+  <h2>5. Парсинг PDF и OCR в EngHub</h2>
+  <p class="why">Сейчас: Tesseract.js 7.0 локально (200 dpi), при неудаче — OpenAI Vision, максимум 15 страниц, ~$0.15–0.30 за документ, с kill-switch <code>ocr_kill</code>. Находки №2 (pdf-craft) и №4 (docling) предлагают замену.</p>
+  <div class="badges"><span class="b high">риск высокий</span><span class="b zone">бэк</span><span class="b zone">инфра</span><span class="b mid">деньги</span></div>
+  <label class="opt"><input type="radio" name="q5" value="Оставить текущий стек, померить качество на реальных сканах перед любой заменой"><span class="t">Сначала померить текущее качество<span class="rec">рекомендую</span></span><span class="d">docling — 66k звёзд и MIT, вещь серьёзная, но это Python-сервис с моделями, CUDA и новым Railway-контейнером. Менять рабочий OCR, не зная, сколько он реально ошибается на наших сканах ГОСТов, — замена вслепую. Замер дешевле переезда.</span></label>
+  <label class="opt"><input type="radio" name="q5" value="docling (#4) отдельным Python-сервисом"><span class="t">docling (#4) отдельным сервисом</span><span class="d">MIT, 66k★, живой. Умеет структуру страницы, таблицы, формулы. Заходит как сервис рядом с cad-engine — Python в архитектуре уже есть.</span></label>
+  <label class="opt"><input type="radio" name="q5" value="pdf-craft (#2)"><span class="t">pdf-craft (#2)</span><span class="d">MIT, 6.3k★, заточен под сканы книг и перевод. Наша задача — чертежи и нормативы; профиль расходится.</span></label>
+  <label class="opt"><input type="radio" name="q5" value="Не трогать OCR вообще"><span class="t">Не трогать</span><span class="d">Kill-switch и фолбэк на месте, система работает. Жалоб на качество распознавания в STATE.md нет.</span></label>
+  <div class="free"><label>Свой вариант / уточнение</label><input type="text" name="q5_free" placeholder="…"></div>
+</div>
+
+<!-- 6 -->
+<div class="card" data-q="6. Цитирование источников в ответах">
+  <h2>6. Показывать, откуда взят ответ</h2>
+  <p class="why">Топ выдачи радара — GraphRAG-SDK (#1) «для трассировки источников». Но provenance в EngHub уже собирается: <code>document-parser/src/models/traceability.py</code>, поля <code>source_document_id</code> и <code>source_quote</code> в миграции от 03.08.2026. Просто не отдаётся в ответе пользователю.</p>
+  <div class="badges"><span class="b low">риск низкий</span><span class="b zone">бэк</span><span class="b zone">фронт</span><span class="b zone">UX</span></div>
+  <label class="opt"><input type="radio" name="q6" value="Отдавать в ответе номер пункта, документ и цитату чанка — без новых зависимостей"><span class="t">Отдавать документ, пункт и цитату чанка<span class="rec">рекомендую</span></span><span class="d">Чанки в <code>agsk_chunks</code> уже привязаны к документу. Работа — вернуть их в ответе и показать на фронте. День работы против переезда на графовую БД.</span></label>
+  <label class="opt"><input type="radio" name="q6" value="GraphRAG-SDK (#1) с графовой БД FalkorDB"><span class="t">GraphRAG-SDK (#1) + FalkorDB</span><span class="d">Apache-2.0, 999★. Даёт многошаговый обход связей между нормами. Но это Python, новая БД и онтология под нормативы — месяцы, а не дни.</span></label>
+  <label class="opt"><input type="radio" name="q6" value="Добавить отказ от ответа при нехватке доказательств"><span class="t">Добавить отказ «не нашёл в нормах»</span><span class="d">Отдельно от цитирования: если релевантность чанков ниже порога — не сочинять, а честно сказать. Дешёвая правка, снимает главный риск в работе с нормативами.</span></label>
+  <div class="free"><label>Свой вариант / уточнение</label><input type="text" name="q6_free" placeholder="…"></div>
+</div>
+
+<!-- 7 -->
+<div class="card" data-q="7. Наблюдаемость и стоимость LLM">
+  <h2>7. Видеть расход на LLM</h2>
+  <p class="why">Находка №35 — opik (Apache-2.0, 22k★): трассировка вызовов, оценка качества, учёт стоимости. У EngHub три провайдера без единого учёта, у zharnama — семь сервисов на OpenAI.</p>
+  <div class="badges"><span class="b mid">риск средний</span><span class="b zone">бэк</span><span class="b zone">инфра</span><span class="b mid">деньги</span></div>
+  <label class="opt"><input type="radio" name="q7" value="Своя таблица llm_usage: модель, токены, стоимость, маршрут — вместе с роутером из карточки 4"><span class="t">Своя таблица <code>llm_usage</code> — вместе с роутером из карточки 4<span class="rec">рекомендую</span></span><span class="d">Если роутер всё равно делается, учёт токенов и стоимости пишется там же одной строкой. В project-radar это уже так устроено — таблица <code>FindingAnalysis</code> хранит модель, версию промпта и расход.</span></label>
+  <label class="opt"><input type="radio" name="q7" value="opik (#35) self-hosted"><span class="t">opik (#35) self-hosted</span><span class="d">Готовые дашборды и оценка качества ответов. Цена — ещё один сервис и хранилище трейсов.</span></label>
+  <label class="opt"><input type="radio" name="q7" value="Не нужно, расход и так понятен"><span class="t">Не нужно</span><span class="d">Если суммы на OpenAI/Groq пока не беспокоят — это преждевременно.</span></label>
+  <div class="free"><label>Свой вариант / уточнение</label><input type="text" name="q7_free" placeholder="…"></div>
+</div>
+
+<!-- 8 -->
+<div class="card" data-q="8. Маскировка персональных данных перед LLM">
+  <h2>8. Маскировка персональных данных перед отправкой в LLM</h2>
+  <p class="why">Находка №27 (maskgate) — обнаружение и маскировка ИИН, паспортов, телефонов. Репозиторий сырой: 269★, 0 форков, без лицензии и без указанного языка — брать код нельзя. Но задача настоящая: в EngHub уходят в OpenAI сканы с ФИО и подписями, в track-parts — путевые листы с данными водителей.</p>
+  <div class="badges"><span class="b high">риск высокий</span><span class="b zone">бэк</span><span class="b zone">безопасность</span></div>
+  <label class="opt"><input type="radio" name="q8" value="Своя маскировка на регулярках для ИИН, телефонов и ФИО в текстовом слое перед отправкой"><span class="t">Своя маскировка перед отправкой<span class="rec">рекомендую</span></span><span class="d">ИИН и телефоны РК — фиксированный формат, ловятся регулярками надёжно. Код чужого репо без лицензии брать нельзя по правилу 15, а идею — можно. Начать с текстового слоя, картинки — отдельно.</span></label>
+  <label class="opt"><input type="radio" name="q8" value="Сначала аудит: что именно из ПДн уходит наружу и в какие модели"><span class="t">Сначала аудит утечки</span><span class="d">В репо уже есть <code>AI_DATA_EGRESS.md</code> — сверить его с фактическими вызовами, прежде чем что-то маскировать. Может оказаться, что дыра в одном месте.</span></label>
+  <label class="opt"><input type="radio" name="q8" value="Не сейчас"><span class="t">Не сейчас</span><span class="d">Внутренняя система, данные не покидают круг сотрудников, кроме как в API моделей.</span></label>
+  <div class="free"><label>Свой вариант / уточнение</label><input type="text" name="q8_free" placeholder="…"></div>
+</div>
+
+<!-- 9 -->
+<div class="card" data-q="9. Фильтр зрелости в радаре">
+  <h2>9. Фильтр зрелости и лицензии в самом радаре</h2>
+  <p class="why">12 находок из 48 — без лицензии или NOASSERTION, 24 — меньше 300 звёзд, 20 — меньше 15 форков. По правилу 15 CLAUDE.md такие репозитории нельзя даже клонировать без проверки — но они идут в выгрузку наравне с docling и pydantic.</p>
+  <div class="badges"><span class="b low">риск низкий</span><span class="b zone">радар</span><span class="b zone">бэк</span></div>
+  <details><summary>Что именно пришло мимо</summary><pre>#9  OCR на C#        #28 CUDA-ядра внимания
+#11 OCR на чистом C  #31 захват экрана под macOS/Swift
+#41 обёртка Windows Snipping Tool
+#46 awesome-list (не код вообще)
+#17,#30,#34,#44,#47 — одиночные репо, 0-2 форка, часто без лицензии</pre></details>
+  <label class="opt"><input type="radio" name="q9" value="Не отбрасывать, но помечать в выгрузке: лицензия, зрелость, чужая экосистема"><span class="t">Не отбрасывать, а помечать<span class="rec">рекомендую</span></span><span class="d">Жёсткий порог отрежет и что-то полезное на раннем этапе. Достаточно бейджа «без лицензии» / «чужая экосистема» в карточке — решение остаётся за тобой, но видно сразу.</span></label>
+  <label class="opt"><input type="radio" name="q9" value="Жёсткий порог: отбрасывать без лицензии и с числом форков меньше 15"><span class="t">Жёсткий порог на входе</span><span class="d">Выгрузка станет вдвое короче и дешевле в разборе. Риск — потерять раннюю находку, которая ещё не набрала звёзд.</span></label>
+  <label class="opt"><input type="radio" name="q9" value="Добавить язык проекта в negative-фильтр: отсекать находки на чужих для проекта языках"><span class="t">Отсекать по языку под стек проекта</span><span class="d">Если у проекта в стеке нет C# и Swift — находки на них не показывать. Требует, чтобы <code>current_stack</code> был заполнен верно, то есть карточки 1 и 2 сначала.</span></label>
+  <div class="free"><label>Свой вариант / уточнение</label><input type="text" name="q9_free" placeholder="…"></div>
+</div>
+
+<!-- 10 -->
+<div class="card bigcard" data-q="10. Всё остальное">
+  <h2>10. Всё остальное</h2>
+  <p class="why">Что я упустил, с чем не согласен, что важнее по срокам, какие находки из 48 разобрать подробнее — пиши свободно.</p>
+  <div class="free"><label>Свободное поле</label><textarea name="q10_free" rows="6" placeholder="…"></textarea></div>
+</div>
+
+<div id="outWrap">
+  <textarea id="out" readonly></textarea>
+  <p class="note">Скопируй и вставь обратно в чат.</p>
+</div>
+</div>
+
+<div class="bar">
+  <button onclick="collect()">Собрать решения</button>
+  <button class="sec" onclick="copyOut()">Скопировать</button>
+</div>
+
+<script>
+function collect(){
+  var out=[], cards=document.querySelectorAll('.card');
+  cards.forEach(function(c){
+    var q=c.getAttribute('data-q'), picked=[], free='';
+    c.querySelectorAll('input[type=radio]:checked,input[type=checkbox]:checked')
+      .forEach(function(i){picked.push(i.value)});
+    var f=c.querySelector('input[type=text],textarea');
+    if(f) free=f.value.trim();
+    if(!picked.length && !free) return;
+    out.push('## '+q);
+    if(picked.length) out.push('Выбор: '+picked.join(' + '));
+    if(free) out.push('Комментарий: '+free);
+    out.push('');
+  });
+  var t=document.getElementById('out');
+  t.value = out.length ? 'РЕШЕНИЯ ПО ВЫГРУЗКЕ РАДАРА 14.09.2026\n\n'+out.join('\n')
+                       : 'Ничего не отмечено.';
+  document.getElementById('outWrap').style.display='block';
+  t.scrollIntoView({behavior:'smooth',block:'center'});
+}
+function copyOut(){
+  var t=document.getElementById('out');
+  if(!t.value) collect();
+  t.removeAttribute('readonly'); t.select(); t.setSelectionRange(0,999999);
+  try{document.execCommand('copy')}catch(e){}
+  if(navigator.clipboard) navigator.clipboard.writeText(t.value).catch(function(){});
+  t.setAttribute('readonly','');
+  var b=event.target, o=b.textContent; b.textContent='Скопировано';
+  setTimeout(function(){b.textContent=o},1400);
+}
+</script>
+</body>
+</html>
