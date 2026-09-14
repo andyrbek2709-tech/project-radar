@@ -10,6 +10,7 @@ Telethon держит долгую MTProto-сессию, и перелогин �
 from __future__ import annotations
 
 import asyncio
+import re
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -22,6 +23,16 @@ from app.models.source import CollectorRun, ProcessingStatus, RawItem, Source, S
 from app.services.normalizer import extract_github_repos, extract_urls
 
 log = get_logger("telegram")
+
+
+# Telethon кладёт в текст ошибки непрочитанный хвост пакета, а в нём имя,
+# username и телефон владельца сессии. Этот текст пишется в collector_runs
+# и показывается в таблице «Коллекторы» — личные данные уехали бы в UI.
+_BYTES_DUMP = re.compile(r"Remaining bytes: b.*", re.S)
+
+
+def safe_error(exc: BaseException, limit: int = 500) -> str:
+    return _BYTES_DUMP.sub("Remaining bytes: <вырезано>", str(exc))[:limit]
 
 
 class TelegramUnavailable(RuntimeError):
@@ -206,8 +217,8 @@ async def collect_source(client: Any, session: Session, source: Source) -> dict[
         _pause_source(source, exc.seconds)
         return {"fetched": 0, "stored": 0, "flood_wait": exc.seconds}
     except Exception as exc:  # noqa: BLE001
-        source.last_error = f"resolve failed: {str(exc)[:200]}"
-        log.warning("telegram_resolve_failed", source=source.external_id, error=str(exc)[:200])
+        source.last_error = f"resolve failed: {safe_error(exc, 200)}"
+        log.warning("telegram_resolve_failed", source=source.external_id, error=safe_error(exc, 200))
         return {"fetched": 0, "stored": 0}
 
     if not source.title or source.title == source.external_id:
@@ -254,8 +265,8 @@ async def collect_source(client: Any, session: Session, source: Source) -> dict[
         _pause_source(source, exc.seconds)
         log.warning("telegram_flood_wait", source=source.external_id, seconds=exc.seconds)
     except Exception as exc:  # noqa: BLE001
-        source.last_error = str(exc)[:300]
-        log.warning("telegram_collect_failed", source=source.external_id, error=str(exc)[:200])
+        source.last_error = safe_error(exc, 300)
+        log.warning("telegram_collect_failed", source=source.external_id, error=safe_error(exc, 200))
 
     if max_seen > min_id:
         cursor.last_item_id = str(max_seen)
@@ -314,7 +325,7 @@ async def collect_all(session: Session) -> dict[str, Any]:
                 status="error",
                 started_at=run.started_at or datetime.now(timezone.utc),
                 finished_at=datetime.now(timezone.utc),
-                error=str(exc)[:500],
+                error=safe_error(exc),
             )
         )
         session.commit()
@@ -356,7 +367,7 @@ async def send_to_saved_messages(text: str) -> bool:
                 await client.send_message("me", chunk, link_preview=False)
         return True
     except Exception as exc:  # noqa: BLE001
-        log.warning("telegram_delivery_failed", error=str(exc)[:200])
+        log.warning("telegram_delivery_failed", error=safe_error(exc, 200))
         return False
 
 
