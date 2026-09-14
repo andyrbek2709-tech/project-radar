@@ -72,7 +72,7 @@ export default function ProjectsPage() {
     <>
       <div className="page-head">
         <div>
-          <h1>Projects</h1>
+          <h1>Проекты</h1>
           <div className="subtitle">
             Профиль проекта — эталон, относительно которого оценивается каждая находка
           </div>

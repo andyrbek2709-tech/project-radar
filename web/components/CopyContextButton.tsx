@@ -4,7 +4,7 @@ import { useState } from "react";
 import { api } from "@/lib/api";
 
 /**
- * COPY ANALYSIS CONTEXT — один клик, готовый промпт для ChatGPT/Codex.
+ * СКОПИРОВАТЬ КОНТЕКСТ — один клик, готовый промпт для ChatGPT/Codex.
  *
  * Промпт собирается на бэкенде: контекст (профиль проекта, существующие фичи,
  * метрики репозитория) живёт в базе, дублировать его в браузер незачем.
@@ -12,7 +12,7 @@ import { api } from "@/lib/api";
 export default function CopyContextButton({
   findingId,
   projectId,
-  label = "COPY ANALYSIS CONTEXT",
+  label = "СКОПИРОВАТЬ КОНТЕКСТ",
 }: {
   findingId: string;
   projectId?: string;

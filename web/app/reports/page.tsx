@@ -38,7 +38,7 @@ export default function ReportsPage() {
     <>
       <div className="page-head">
         <div>
-          <h1>Reports</h1>
+          <h1>Отчёты</h1>
           <div className="subtitle">
             Daily Radar · окно — предыдущие 24 часа · Asia/Aqtau
           </div>
@@ -85,9 +85,9 @@ export default function ReportsPage() {
                   <Stat label="GitHub" value={selected.github_candidates} />
                   <Stat label="После фильтра" value={selected.after_cheap_filter} />
                   <Stat label="После AI" value={selected.after_ai_filter} />
-                  <Stat label="Critical" value={selected.critical_count} color="var(--critical)" />
-                  <Stat label="Recommended" value={selected.recommended_count} color="var(--recommended)" />
-                  <Stat label="Review Later" value={selected.review_later_count} color="var(--review)" />
+                  <Stat label="Критично" value={selected.critical_count} color="var(--critical)" />
+                  <Stat label="Рекомендовано" value={selected.recommended_count} color="var(--recommended)" />
+                  <Stat label="Отложено" value={selected.review_later_count} color="var(--review)" />
                   <Stat label="Отклонено" value={selected.rejected_count} />
                 </div>
                 <div className="markdown-body">{selected.body_markdown}</div>
