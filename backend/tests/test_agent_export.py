@@ -3,7 +3,11 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from app.services.agent_export import _analysis_sections, _header_line
+from app.services.agent_export import (
+    _analysis_sections,
+    _header_line,
+    _match_sections,
+)
 
 FULL = {
     "what_it_does": "Парсит PDF и достаёт таблицы.",
@@ -79,3 +83,36 @@ def test_header_line_without_project() -> None:
     line = _header_line(datetime(2026, 9, 14, 23, 15), ["RECOMMENDED"], None, 6)
     assert "проект" not in line
     assert line.endswith("находок: 6")
+
+
+MATCH = {
+    "why_relevant": "Закрывает разбор сканов, которого у нас нет.",
+    "what_we_have": "Построчный парсер PDF на pdfplumber.",
+    "what_it_offers": "Конвертация сканов в редактируемые форматы.",
+    "advantages": ["держит таблицы", "MIT"],
+    "disadvantages": ["тянет torch", "медленно на больших файлах"],
+    "integration_complexity": "high",
+}
+
+
+def test_project_match_analysis_is_not_lost() -> None:
+    """Живой случай: у находок лежал project_match, а выгрузка читала ключи
+    глубокого разбора — в файл попадал единственный совпавший what_we_have."""
+    text = "\n".join(_match_sections(MATCH))
+
+    assert "### Что предлагает" in text
+    assert "### Что у нас уже есть" in text
+    assert "### Почему это нам близко" in text
+    assert "- держит таблицы" in text
+    assert "- тянет torch" in text
+    assert "сложность интеграции высокая" in text
+
+
+def test_match_sections_skip_what_model_left_empty() -> None:
+    assert _match_sections({}) == []
+
+
+def test_deep_keys_do_not_leak_into_match_output() -> None:
+    """Ключи разных разборов не должны перемешиваться."""
+    text = "\n".join(_match_sections({**MATCH, "expected_benefit": "не отсюда"}))
+    assert "не отсюда" not in text
