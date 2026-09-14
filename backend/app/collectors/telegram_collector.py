@@ -39,6 +39,31 @@ def _require_telethon():  # noqa: ANN202
     return TelegramClient, StringSession
 
 
+def _normalize_session_string(raw: str) -> str:
+    """Починить строку сессии, пострадавшую при копировании в переменные окружения.
+
+    StringSession — это версия ('1') плюс base64url. По дороге в Railway строка
+    регулярно теряет хвостовые '=' (их съедают формы и шеллы), обрастает
+    кавычками или переносами строк после копирования из терминала. Ни одно из
+    этих повреждений не трогает сами байты сессии, но base64 отказывается
+    декодироваться с «Incorrect padding» — и коллектор молча падает каждый прогон.
+
+    Чиним то, что чинится однозначно. Реально обрезанную строку это не спасёт:
+    padding восстановится, а распаковка упадёт дальше — с честной ошибкой.
+    """
+    cleaned = "".join(raw.split())
+    if len(cleaned) >= 2 and cleaned[0] == cleaned[-1] and cleaned[0] in "\"'":
+        cleaned = cleaned[1:-1].strip()
+    if not cleaned:
+        return cleaned
+
+    version, body = cleaned[0], cleaned[1:].rstrip("=")
+    remainder = len(body) % 4
+    if remainder:
+        body += "=" * (4 - remainder)
+    return version + body
+
+
 def build_client():  # noqa: ANN201
     """StringSession из env. Значение сессии не логируется никогда."""
     if not (settings.TELEGRAM_API_ID and settings.TELEGRAM_API_HASH):
@@ -51,7 +76,7 @@ def build_client():  # noqa: ANN201
 
     TelegramClient, StringSession = _require_telethon()
     try:
-        session = StringSession(settings.TELEGRAM_SESSION_STRING)
+        session = StringSession(_normalize_session_string(settings.TELEGRAM_SESSION_STRING))
     except Exception as exc:  # noqa: BLE001
         # StringSession декодирует строку из base64 и роняет binascii.Error
         # с текстом вроде «Incorrect padding». Сам по себе он не говорит ни
@@ -59,7 +84,8 @@ def build_client():  # noqa: ANN201
         # именно эта фраза — поэтому подменяем на внятную.
         raise TelegramUnavailable(
             f"TELEGRAM_SESSION_STRING не декодируется ({type(exc).__name__}: {str(exc)[:80]}). "
-            "Строка обрезана или потеряла символы при копировании. "
+            "Пробелы, кавычки и потерянный padding уже учтены — значит строка "
+            "обрезана по-настоящему. "
             "Перевыпусти: python scripts/gen_telegram_session.py"
         ) from exc
 

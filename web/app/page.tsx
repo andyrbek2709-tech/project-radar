@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import Link from "next/link";
 import { api } from "@/lib/api";
 import type { Dashboard, DailyReport } from "@/lib/types";
@@ -244,17 +244,41 @@ export default function DashboardPage() {
           </thead>
           <tbody>
             {data.collectors.map((run, i) => (
-              <tr key={i}>
-                <td className="mono">{run.collector}</td>
-                <td style={{ color: run.status === "ok" ? "var(--recommended)" : "var(--review)" }}>
-                  {run.status}
-                </td>
-                <td>{new Date(run.started_at).toLocaleString("ru-RU")}</td>
-                <td className="num">{run.items_fetched}</td>
-                <td className="num">{run.items_new}</td>
-                <td className="num">{run.api_requests}</td>
-                <td className="num">{run.rate_limit_remaining ?? "—"}</td>
-              </tr>
+              // Фрагмент, а не одна строка: причина падения занимает всю ширину
+              // под прогоном. Без неё «error» в таблице неотличим от любого
+              // другого — а текст всё это время лежал в ответе API.
+              <Fragment key={i}>
+                <tr>
+                  <td className="mono">{run.collector}</td>
+                  <td style={{ color: run.status === "ok" ? "var(--recommended)" : "var(--review)" }}>
+                    {run.status}
+                  </td>
+                  <td>{new Date(run.started_at).toLocaleString("ru-RU")}</td>
+                  <td className="num">{run.items_fetched}</td>
+                  <td className="num">{run.items_new}</td>
+                  <td className="num">{run.api_requests}</td>
+                  <td className="num">{run.rate_limit_remaining ?? "—"}</td>
+                </tr>
+                {run.error ? (
+                  <tr>
+                    <td colSpan={7} style={{ paddingTop: 0 }}>
+                      <div
+                        style={{
+                          color: "var(--critical)",
+                          background: "rgba(220, 80, 80, 0.08)",
+                          borderLeft: "2px solid var(--critical)",
+                          padding: "6px 10px",
+                          fontSize: 12,
+                          lineHeight: 1.5,
+                          whiteSpace: "pre-wrap",
+                        }}
+                      >
+                        {run.error}
+                      </div>
+                    </td>
+                  </tr>
+                ) : null}
+              </Fragment>
             ))}
             {data.collectors.length === 0 ? (
               <tr>
