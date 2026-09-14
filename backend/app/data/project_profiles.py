@@ -13,7 +13,10 @@
 """
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:  # только для аннотации: миграция импортирует этот модуль,
+    from app.models.project import Project  # и тянуть в неё ORM-модели незачем
 
 # negative_keywords объединяются ПО ВСЕМ активным проектам и применяются
 # в cheap_filter как один глобальный список подстрок (pipeline._negative_keywords

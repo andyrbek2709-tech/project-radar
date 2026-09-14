@@ -1,0 +1,105 @@
+# Проверка бэкенда перед деплоем.
+#
+# Railway деплоит сервисы из main с включённым «Wait for CI», то есть ждёт
+# успешного завершения проверок GitHub. До 14.09.2026 в репозитории не было ни
+# одного workflow — ждать было нечего, и тумблер работал вхолостую.
+#
+# Здесь проверяется ровно то, что способно положить прод:
+#   1) тесты бэкенда;
+#   2) миграции на настоящем PostgreSQL с pgvector — стартовая команда сервиса
+#      выполняет `alembic upgrade head`, и упавшая миграция означает, что
+#      контейнер не поднимется;
+#   3) согласие миграции профилей со спецификацией в app/data/project_profiles.py.
+#
+# Ruff намеренно не гейтит: на существующем коде он даёт 144 замечания, и
+# блокирующий линт остановил бы любой деплой. Приводить код в порядок — отдельная
+# задача, а не условие выкатки.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Тесты и миграции
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        # Тот же мажор, что в docker-compose, и сразу с расширением vector:
+        # без него падает первая же миграция — в схеме есть колонки Vector.
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: radar
+          POSTGRES_PASSWORD: radar
+          POSTGRES_DB: radar
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U radar"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    env:
+      # Драйвер не указываем: config.py сам добавляет asyncpg и psycopg,
+      # как это делает Railway со своей DATABASE_URL.
+      DATABASE_URL: postgresql://radar:radar@localhost:5432/radar
+      REDIS_URL: redis://localhost:6379/0
+      APP_ENV: local
+      LOG_JSON: "false"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"   # как в backend/Dockerfile
+          cache: pip
+          cache-dependency-path: backend/requirements-dev.txt
+
+      - name: Установить зависимости
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      - name: Включить расширение vector
+        run: |
+          PGPASSWORD=radar psql -h localhost -U radar -d radar -c 'CREATE EXTENSION IF NOT EXISTS vector;'
+
+      - name: Миграции с нуля
+        working-directory: backend
+        run: alembic upgrade head
+
+      - name: Тесты
+        working-directory: backend
+        # Строго после миграций: test_pipeline_batch проверяет границу
+        # транзакции на живой схеме. Без базы он пропускается, но при
+        # доступной и пустой — падает на отсутствующих таблицах.
+        run: pytest
+
+      - name: Откат и повторное применение последней миграции
+        working-directory: backend
+        run: |
+          alembic downgrade -1
+          alembic upgrade head
+
+      - name: Профили проектов совпадают со спецификацией
+        working-directory: backend
+        # После миграции сид обязан не находить расхождений. Если кто-то правил
+        # app/data/project_profiles.py, не добавив миграцию, шаг это поймает.
+        run: |
+          output=$(python scripts/seed_projects.py --dry-run)
+          echo "$output"
+          echo "$output" | grep -q "Создано: 0, обновлено: 0" || {
+            echo "::error::Профили в базе разошлись со спецификацией — нужна новая миграция"
+            exit 1
+          }

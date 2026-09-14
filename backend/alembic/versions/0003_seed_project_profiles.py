@@ -29,9 +29,9 @@ from __future__ import annotations
 import uuid
 
 import sqlalchemy as sa
-from alembic import op
 from sqlalchemy.dialects import postgresql
 
+from alembic import op
 from app.data.project_profiles import PROJECTS, UPDATABLE
 
 revision = "0003_seed_project_profiles"

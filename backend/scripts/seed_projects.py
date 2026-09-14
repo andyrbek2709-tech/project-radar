@@ -35,7 +35,11 @@ from app.core.db import session_scope
 from app.core.logging import configure_logging, get_logger
 from app.data.project_profiles import PROJECTS, apply_spec
 from app.models.project import Project
-from app.services.profiler import audit_repository, create_project_with_audit, refresh_project_embedding
+from app.services.profiler import (
+    audit_repository,
+    create_project_with_audit,
+    refresh_project_embedding,
+)
 
 configure_logging("seed")
 log = get_logger("collector")
