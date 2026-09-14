@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { api } from "@/lib/api";
+import ProfileEditor from "@/components/ProfileEditor";
 import type { Project } from "@/lib/types";
 
 export default function ProjectsPage() {
@@ -206,6 +207,8 @@ export default function ProjectsPage() {
                   </div>
                 </div>
               ) : null}
+
+              <ProfileEditor project={p} onSaved={load} />
             </div>
           ))}
         </div>
