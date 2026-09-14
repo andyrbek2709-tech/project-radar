@@ -59,13 +59,19 @@ class Response:
 
 
 class GitHubClient:
-    def __init__(self, token: str | None = None) -> None:
+    def __init__(
+        self,
+        token: str | None = None,
+        *,
+        transport: httpx.BaseTransport | None = None,
+    ) -> None:
         self.token = token or settings.GITHUB_TOKEN
         self.requests_made = 0
         self.rate_limit_remaining: int | None = None
         self._last_search_at = 0.0
         self._client = httpx.Client(
             timeout=30.0,
+            transport=transport,
             headers={
                 "Accept": "application/vnd.github+json",
                 "X-GitHub-Api-Version": "2022-11-28",
@@ -96,6 +102,7 @@ class GitHubClient:
         params: dict[str, Any] | None = None,
         json_body: dict[str, Any] | None = None,
         allow_404: bool = False,
+        raw: bool = False,
     ) -> Response:
         url = path if path.startswith("http") else f"{API}{path}"
         headers: dict[str, str] = {}
@@ -127,7 +134,16 @@ class GitHubClient:
         data: Any = None
         if resp.content:
             ctype = resp.headers.get("content-type", "")
-            data = resp.json() if "json" in ctype else resp.text
+            if raw or "json" not in ctype:
+                data = resp.text
+            else:
+                try:
+                    data = resp.json()
+                except ValueError:
+                    # Сырой контент под «джейсоновым» Content-Type: GitHub отдаёт
+                    # README как application/vnd.github.raw+json — суффикс +json
+                    # в заголовке есть, JSON внутри нет. Проверено на живом API.
+                    data = resp.text
 
         return Response(resp.status_code, data, resp.headers.get("etag"), dict(resp.headers))
 
@@ -210,6 +226,7 @@ class GitHubClient:
             etag=etag,
             accept="application/vnd.github.raw+json",
             allow_404=True,
+            raw=True,
         )
 
     def get_latest_release(self, full_name: str) -> dict[str, Any] | None:

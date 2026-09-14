@@ -242,6 +242,12 @@ async def collect_all(session: Session) -> dict[str, Any]:
         return {"status": "skipped", "reason": "disabled"}
 
     sources = ensure_sources(session)
+    # Регистрация каналов — самостоятельный факт, она обязана пережить любую
+    # последующую ошибку соединения. Без этого коммита неверные TELEGRAM_*
+    # откатывали только что заведённые источники вместе с транзакцией, и в UI
+    # Telegram выглядел вообще ненастроенным — при заполненных переменных.
+    session.commit()
+
     if not sources:
         return {"status": "ok", "fetched": 0, "stored": 0, "sources": 0}
 
@@ -250,15 +256,30 @@ async def collect_all(session: Session) -> dict[str, Any]:
     session.flush()
 
     total_fetched = total_stored = 0
-    client = build_client()
-
-    async with client:
-        for source in sources:
-            result = await collect_source(client, session, source)
-            total_fetched += result.get("fetched", 0)
-            total_stored += result.get("stored", 0)
-            # Между каналами — небольшая пауза, чтобы не выглядеть скриптом.
-            await asyncio.sleep(1.0)
+    try:
+        client = build_client()
+        async with client:
+            for source in sources:
+                result = await collect_source(client, session, source)
+                total_fetched += result.get("fetched", 0)
+                total_stored += result.get("stored", 0)
+                # Между каналами — небольшая пауза, чтобы не выглядеть скриптом.
+                await asyncio.sleep(1.0)
+    except Exception as exc:
+        # Падение сбора должно быть видно в таблице «Коллекторы», а не только
+        # в логах сервиса: иначе молчащий Telegram неотличим от настроенного.
+        session.rollback()
+        session.add(
+            CollectorRun(
+                collector="telegram",
+                status="error",
+                started_at=run.started_at or datetime.now(timezone.utc),
+                finished_at=datetime.now(timezone.utc),
+                error=str(exc)[:500],
+            )
+        )
+        session.commit()
+        raise
 
     run.items_fetched = total_fetched
     run.items_new = total_stored
