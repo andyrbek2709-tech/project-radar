@@ -588,6 +588,9 @@ def _match_project(
         match_context={
             "max_similarity_to_features": sim_feature,
             "nearest_feature_name": nearest_feature.name if nearest_feature else None,
+            # Нужен движку, чтобы причина рекомендации называла суть,
+            # а не пересказывала порог.
+            "what_it_offers": analysis.what_it_offers if analysis is not None else None,
         },
         project_name=project.name,
     )

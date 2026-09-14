@@ -41,6 +41,83 @@ class Verdict:
     triggers: list[dict[str, Any]] = field(default_factory=list)
 
 
+# --------------------------------------------------------- формулировки
+
+def _first_sentence(text: str | None, limit: int = 170) -> str:
+    """Первое предложение — суть. Остальное уже есть в карточке."""
+    text = (text or "").strip()
+    if not text:
+        return ""
+    for sep in (". ", "; "):
+        head, found, _ = text.partition(sep)
+        if found and len(head) >= 40:
+            text = head
+            break
+    text = text.rstrip(" .;")
+    return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
+
+
+def _upper_first(text: str) -> str:
+    """Заглавная только первая буква.
+
+    Встроенный метод str опускает регистр всего остального: «механизма PDF»
+    превращалось в «механизма pdf». Названия и аббревиатуры в причине решения
+    обязаны остаться как есть.
+    """
+    return text[:1].upper() + text[1:] if text else text
+
+
+def _cost_word(score: float) -> str:
+    if score <= 0.35:
+        return "дешёвое"
+    if score <= 0.65:
+        return "среднее"
+    return "дорогое"
+
+
+def _risk_word(score: float) -> str:
+    if score <= 0.25:
+        return "низкий"
+    if score <= 0.55:
+        return "умеренный"
+    return "заметный"
+
+
+def _edge_phrase(scores: ScoreSet, nearest: str | None) -> str:
+    """Преимущество ОТНОСИТЕЛЬНО текущего подхода — иначе это не причина."""
+    strong = scores.improvement_score >= 0.60
+    if nearest:
+        return (
+            f"заметно сильнее текущего механизма «{nearest}»"
+            if strong
+            else f"выигрыш относительно «{nearest}» умеренный"
+        )
+    return (
+        "закрывает то, чего в проекте сейчас нет"
+        if strong
+        else "выигрыш относительно текущего подхода умеренный"
+    )
+
+
+def _value_reason(scores: ScoreSet, match_context: dict[str, Any], project_name: str) -> str:
+    """Причина для CRITICAL и RECOMMENDED.
+
+    Раньше здесь стояло «заметное улучшение для X (radar 0.65), цена внедрения
+    приемлемая» — пересказ порога, а не причина. Спека проекта такие
+    формулировки прямо запрещает и требует: что предлагает нового →
+    преимущество относительно текущего подхода → цена внедрения.
+    """
+    offers = _first_sentence(match_context.get("what_it_offers"))
+    edge = _edge_phrase(scores, match_context.get("nearest_feature_name"))
+    tail = (
+        f"внедрение {_cost_word(scores.implementation_cost_score)}, "
+        f"риск {_risk_word(scores.risk_score)}"
+    )
+    if offers:
+        return f"{offers}. {_upper_first(edge)}; {tail}"
+    return f"{_upper_first(edge)} в {project_name}; {tail}"
+
+
 def evaluate(
     *,
     scores: ScoreSet,
@@ -123,17 +200,14 @@ def evaluate(
     if scores.radar_score >= settings.CRITICAL_SCORE and scores.confidence_score >= 0.70:
         return Verdict(
             DecisionStatus.CRITICAL,
-            f"закрывает актуальную задачу {project_name}: улучшение "
-            f"{scores.improvement_score:.2f} при цене внедрения "
-            f"{scores.implementation_cost_score:.2f} и риске {scores.risk_score:.2f}",
+            _value_reason(scores, match_context, project_name),
             ReasonCode.HIGH_VALUE,
         )
 
     if scores.radar_score >= settings.RECOMMENDED_SCORE:
         return Verdict(
             DecisionStatus.RECOMMENDED,
-            f"заметное улучшение для {project_name} (radar {scores.radar_score:.2f}), "
-            "цена внедрения приемлемая",
+            _value_reason(scores, match_context, project_name),
             ReasonCode.HIGH_VALUE,
         )
 

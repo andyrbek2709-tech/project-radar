@@ -231,3 +231,65 @@ class TestRadarScore:
         for value in (0.0, 0.5, 1.0):
             scores = ScoreSet(**{k: value for k in ScoreSet().as_dict() if k != "radar_score"})
             assert 0.0 <= compute_radar_score(scores) <= 1.0
+
+
+class TestRecommendationWording:
+    """Причина рекомендации должна называть суть, а не пересказывать порог.
+
+    Спека проекта (ARCHITECTURE.md) запрещает формулировки вида «это интересный
+    проект» и требует: что предлагает нового → преимущество относительно
+    текущего подхода → цена внедрения. Для отклонений это работало, а
+    рекомендации получали шаблон «заметное улучшение (radar 0.65), цена
+    внедрения приемлемая» — самое ценное решение с самым пустым объяснением.
+    """
+
+    @staticmethod
+    def _verdict(**ctx):
+        from app.services.decision_engine import evaluate
+
+        scores = ScoreSet(
+            radar_score=0.65, improvement_score=0.72, implementation_cost_score=0.5,
+            risk_score=0.2, confidence_score=0.8, activity_score=0.9, relevance_score=0.9,
+        )
+        return evaluate(
+            scores=scores,
+            repo={"license_spdx": "MIT", "pushed_at_gh": "2026-09-10T00:00:00+00:00"},
+            match_context=ctx,
+            project_name="EngHub",
+        )
+
+    def test_reason_states_what_it_offers(self):
+        v = self._verdict(
+            nearest_feature_name=None,
+            what_it_offers="Графовая база знаний с трассировкой источников.",
+        )
+        assert "Графовая база знаний" in v.reason
+        assert "radar" not in v.reason, "порог — не причина"
+
+    def test_reason_names_what_it_beats(self):
+        v = self._verdict(
+            nearest_feature_name="построчный разбор PDF",
+            what_it_offers="Разбор структуры страниц и таблиц.",
+        )
+        assert "построчный разбор PDF" in v.reason, "регистр аббревиатур обязан сохраниться"
+
+    def test_weak_improvement_is_not_sold_as_strong(self):
+        from app.services.decision_engine import evaluate
+
+        v = evaluate(
+            scores=ScoreSet(
+                radar_score=0.61, improvement_score=0.30, implementation_cost_score=0.5,
+                risk_score=0.2, confidence_score=0.8, activity_score=0.9, relevance_score=0.8,
+            ),
+            repo={"license_spdx": "MIT", "pushed_at_gh": "2026-09-10T00:00:00+00:00"},
+            match_context={"nearest_feature_name": "валидация данных", "what_it_offers": "Валидация через типы."},
+            project_name="EngHub",
+        )
+        assert "умеренный" in v.reason
+        assert "заметно сильнее" not in v.reason.lower()
+
+    def test_cost_and_risk_are_words_not_numbers(self):
+        v = self._verdict(nearest_feature_name=None, what_it_offers="Что-то новое.")
+        assert "внедрение среднее" in v.reason
+        assert "риск низкий" in v.reason
+        assert "0.5" not in v.reason
