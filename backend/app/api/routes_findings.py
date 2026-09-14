@@ -5,10 +5,12 @@ import uuid
 from datetime import date, datetime, timedelta, timezone
 
 from fastapi import APIRouter, HTTPException, Query, status
+from fastapi.responses import PlainTextResponse
 from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
 from app.api.deps import CurrentUser, DbSession
+from app.core.config import settings
 from app.collectors.github_radar import compute_growth, compute_growth_bulk
 from app.models.analysis import (
     AnalysisType,
@@ -32,6 +34,7 @@ from app.schemas import (
     RepositoryOut,
     ReviewQueueOut,
 )
+from app.services.agent_export import build_agent_digest
 from app.services.context_prompt import build_analysis_context
 from app.services.deep_analysis import store_manual_analysis
 from app.services.decision_engine import Verdict, apply_verdict
@@ -117,6 +120,34 @@ def list_findings(
         items.append(item)
 
     return FindingPage(items=items, total=total, limit=limit, offset=offset)
+
+
+@router.get("/export/agent", response_class=PlainTextResponse)
+def export_for_agent(
+    db: DbSession,
+    _: CurrentUser,
+    status_filter: str = Query(default="RECOMMENDED,REVIEW_LATER", alias="status"),
+    project: str | None = Query(default=None, description="slug проекта"),
+    limit: int = Query(default=200, ge=1, le=1000),
+):
+    """Один Markdown-файл со всеми находками в статусах — на вход агенту.
+
+    Маршрут объявлен ДО /{finding_id}: FastAPI разбирает пути в порядке
+    объявления, и ниже по файлу слово 'export' попало бы в UUID-конвертер
+    и вернуло бы 422 вместо файла.
+    """
+    statuses = [s.strip().upper() for s in status_filter.split(",") if s.strip()]
+    invalid = [s for s in statuses if s not in DecisionStatus.ALL]
+    if invalid:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Неизвестный статус: {invalid}")
+
+    text = build_agent_digest(db, statuses=statuses, project_slug=project, limit=limit)
+    stamp = datetime.now(settings.tz).strftime("%Y-%m-%d")
+    return PlainTextResponse(
+        text,
+        media_type="text/markdown; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="radar-{stamp}.md"'},
+    )
 
 
 @router.get("/{finding_id}", response_model=FindingDetail)
