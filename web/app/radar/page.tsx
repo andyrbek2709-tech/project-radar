@@ -3,6 +3,7 @@
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
+import { downloadAgentDigest } from "@/lib/download";
 import type { Finding, Project } from "@/lib/types";
 import FindingCard from "@/components/FindingCard";
 import { STATUS_LABELS, STATUS_ORDER, statusLabel } from "@/lib/labels";
@@ -34,6 +35,7 @@ function RadarContent() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState(search);
+  const [note, setNote] = useState<string | null>(null);
 
   useEffect(() => {
     api.projects().then(setProjects).catch(() => setProjects([]));
@@ -64,6 +66,19 @@ function RadarContent() {
     router.push(`/radar?${next.toString()}`);
   }
 
+  /** Выгружается то, что на экране: статус и проект берутся из фильтров.
+   *  Поиск по названию намеренно не учитывается — агенту нужен весь срез,
+   *  а не то, что нашлось по слову. */
+  async function download() {
+    try {
+      await downloadAgentDigest(status, project || undefined);
+      setNote("Файл выгружен в загрузки");
+    } catch (err) {
+      setNote(`Не выгрузилось: ${(err as Error).message}`);
+    }
+    setTimeout(() => setNote(null), 4000);
+  }
+
   const title = statusLabel(status);
 
   return (
@@ -74,8 +89,12 @@ function RadarContent() {
           <div className="subtitle">
             {loading ? "загрузка…" : `${total} ${plural(total)}`}
             {project ? ` · проект ${project}` : ""}
+            {note ? ` · ${note}` : ""}
           </div>
         </div>
+        <button className="btn-ghost btn-sm" onClick={download} disabled={loading || total === 0}>
+          Скачать для агента
+        </button>
       </div>
 
       <div className="filters">
