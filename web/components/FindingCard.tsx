@@ -4,6 +4,7 @@ import { useState } from "react";
 import type { Finding } from "@/lib/types";
 import CopyContextButton from "./CopyContextButton";
 import ScoreBar from "./ScoreBar";
+import { statusLabel } from "@/lib/labels";
 
 function fmtDate(value: string | null): string {
   if (!value) return "—";
@@ -41,7 +42,7 @@ export default function FindingCard({ finding }: { finding: Finding }) {
           </div>
 
           <div className="finding-meta">
-            {status ? <span className={`badge badge-${status}`}>{status.replace("_", " ")}</span> : null}
+            {status ? <span className={`badge badge-${status}`}>{statusLabel(status)}</span> : null}
             {match?.project_name ? (
               <>
                 <span>для</span>

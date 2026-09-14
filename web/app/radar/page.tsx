@@ -5,23 +5,12 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
 import type { Finding, Project } from "@/lib/types";
 import FindingCard from "@/components/FindingCard";
+import { STATUS_LABELS, STATUS_ORDER, statusLabel } from "@/lib/labels";
 
 const STATUSES = [
   { value: "", label: "Все статусы" },
-  { value: "CRITICAL", label: "Critical" },
-  { value: "RECOMMENDED", label: "Recommended" },
-  { value: "REVIEW_LATER", label: "Review Later" },
-  { value: "ARCHIVED", label: "Archive" },
-  { value: "REJECTED", label: "Rejected" },
+  ...STATUS_ORDER.map((value) => ({ value, label: STATUS_LABELS[value] })),
 ];
-
-const TITLES: Record<string, string> = {
-  CRITICAL: "Critical",
-  RECOMMENDED: "Recommended",
-  REVIEW_LATER: "Review Later",
-  ARCHIVED: "Archive",
-  REJECTED: "Rejected",
-};
 
 const EMPTY_HINTS: Record<string, string> = {
   CRITICAL: "Ничего критичного. Это хороший знак, а не поломка.",
@@ -75,7 +64,7 @@ function RadarContent() {
     router.push(`/radar?${next.toString()}`);
   }
 
-  const title = status ? TITLES[status] || "Radar" : "Radar";
+  const title = statusLabel(status);
 
   return (
     <>

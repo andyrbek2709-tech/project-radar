@@ -52,7 +52,7 @@ export default function DashboardPage() {
     return (
       <>
         <div className="page-head">
-          <h1>Dashboard</h1>
+          <h1>Сводка</h1>
         </div>
         <div className="error-box">
           Бэкенд недоступен: {error}
@@ -68,7 +68,7 @@ export default function DashboardPage() {
     return (
       <>
         <div className="page-head">
-          <h1>Dashboard</h1>
+          <h1>Сводка</h1>
         </div>
         <div className="skeleton" />
         <div className="skeleton" />
@@ -82,7 +82,7 @@ export default function DashboardPage() {
     <>
       <div className="page-head">
         <div>
-          <h1>Dashboard</h1>
+          <h1>Сводка</h1>
           <div className="subtitle">
             {data.findings_24h} находок за сутки · {data.pending_raw_items} в очереди на разбор
           </div>

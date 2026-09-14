@@ -20,7 +20,7 @@ export default function SettingsPage() {
     return (
       <>
         <div className="page-head">
-          <h1>Settings</h1>
+          <h1>Настройки</h1>
         </div>
         <div className="error-box">{error}</div>
       </>
@@ -31,7 +31,7 @@ export default function SettingsPage() {
     return (
       <>
         <div className="page-head">
-          <h1>Settings</h1>
+          <h1>Настройки</h1>
         </div>
         <div className="skeleton" />
       </>
@@ -44,7 +44,7 @@ export default function SettingsPage() {
     <>
       <div className="page-head">
         <div>
-          <h1>Settings</h1>
+          <h1>Настройки</h1>
           <div className="subtitle">
             Действующая конфигурация. Секретов здесь нет — только флаги «настроено / не настроено»
           </div>
@@ -66,7 +66,7 @@ export default function SettingsPage() {
               <Flag
                 label="Deep analysis AUTO"
                 ok={settings.openai_deep_analysis_enabled}
-                offNote="ручной режим через COPY ANALYSIS CONTEXT"
+                offNote="ручной режим через СКОПИРОВАТЬ КОНТЕКСТ"
               />
             </tbody>
           </table>

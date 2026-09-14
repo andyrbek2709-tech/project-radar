@@ -58,7 +58,7 @@ export default function SourcesPage() {
     <>
       <div className="page-head">
         <div>
-          <h1>Sources</h1>
+          <h1>Источники</h1>
           <div className="subtitle">
             {sources.length} источников · архитектура расширяемая: Habr, Reddit, HN и RSS
             подключаются реализацией одного интерфейса

@@ -4,24 +4,23 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
+import { STATUS_LABELS, STATUS_ORDER } from "@/lib/labels";
 
 const MAIN = [
-  { href: "/", label: "Dashboard" },
-  { href: "/projects", label: "Projects" },
+  { href: "/", label: "Сводка" },
+  { href: "/projects", label: "Проекты" },
 ];
 
-const RADAR = [
-  { href: "/radar?status=CRITICAL", label: "Critical", key: "CRITICAL" },
-  { href: "/radar?status=RECOMMENDED", label: "Recommended", key: "RECOMMENDED" },
-  { href: "/radar?status=REVIEW_LATER", label: "Review Later", key: "REVIEW_LATER" },
-  { href: "/radar?status=ARCHIVED", label: "Archive", key: "ARCHIVED" },
-  { href: "/radar?status=REJECTED", label: "Rejected", key: "REJECTED" },
-];
+const RADAR = STATUS_ORDER.map((key) => ({
+  href: `/radar?status=${key}`,
+  label: STATUS_LABELS[key],
+  key,
+}));
 
 const OPS = [
-  { href: "/sources", label: "Sources" },
-  { href: "/reports", label: "Reports" },
-  { href: "/settings", label: "Settings" },
+  { href: "/sources", label: "Источники" },
+  { href: "/reports", label: "Отчёты" },
+  { href: "/settings", label: "Настройки" },
 ];
 
 export default function Nav() {
@@ -55,7 +54,7 @@ export default function Nav() {
       </div>
 
       <div className="nav-group">
-        <div className="nav-label">Radar</div>
+        <div className="nav-label">Радар</div>
         {RADAR.map((item) => (
           <Link key={item.key} href={item.href} className="nav-link">
             <span>{item.label}</span>
@@ -65,7 +64,7 @@ export default function Nav() {
       </div>
 
       <div className="nav-group">
-        <div className="nav-label">Ops</div>
+        <div className="nav-label">Обслуживание</div>
         {OPS.map((item) => (
           <Link
             key={item.href}
