@@ -29,7 +29,7 @@ export default {
         // Миграции применяются перед стартом: единственный сервис,
         // которому это поручено, чтобы не было гонки.
         startCommand:
-          "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port $PORT",
+          "sh -c 'alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port $PORT'",
         healthcheckPath: "/health",
         healthcheckTimeout: 180,
         restartPolicyType: "ON_FAILURE",

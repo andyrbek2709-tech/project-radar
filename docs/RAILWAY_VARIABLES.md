@@ -51,17 +51,37 @@ scheduler и telegram стартовали как uvicorn). Поэтому он 
 
 | Сервис | Custom Start Command |
 |---|---|
-| `api` | `alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port $PORT` |
+| `api` | `sh -c 'alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port $PORT'` |
 | `worker` | `celery -A app.tasks.celery_app worker --loglevel=info --concurrency=2 --max-tasks-per-child=200` |
 | `scheduler` | `celery -A app.tasks.celery_app beat --loglevel=info --scheduler redbeat.RedBeatScheduler` |
 | `telegram` | `python -m app.collectors.telegram_runner` |
 | `web` | `node server.js` |
 
+Команда api обёрнута в `sh -c '…'` не для красоты: Custom Start Command
+Railway выполняет **без шелла**, и голое `alembic upgrade head && uvicorn …`
+alembic получает как свои аргументы — миграция проходит, а uvicorn не
+стартует никогда. Внутри `sh -c` всё работает как ожидается.
+
 **3. Settings → Deploy → Healthcheck Path** — только у `api`: `/health`,
 у `web`: `/`. У worker/scheduler/telegram HTTP-порта нет — оставить пустым.
 
+Healthcheck и публичный прокси Railway ходят по **IPv4** (`100.64.x.x`):
+uvicorn должен слушать `0.0.0.0`. С `--host ::` контейнер получается
+IPv6-only, healthcheck не доходит, деплой падает через 5 минут без единой
+строки в логах.
+
+**4. Settings → Networking → домен → Target port** у `api` должен быть
+`8000` (= `PORT`). Railway фиксирует порт домена при *первом* деплое
+(8080 по умолчанию) и сам его не меняет — проверь и поправь карандашом.
+
 Опционально **Settings → Build → Watch Paths**: `backend/**` у четырёх
 backend-сервисов, `web/**` у web — чтобы docs-коммиты не пересобирали всё.
+
+Про `${{Postgres.DATABASE_URL}}`: ссылка привязывается к сервису **в момент
+сохранения**. Если сохранить её раньше, чем создан `Postgres`, она навсегда
+резолвится в пустую строку (`Could not parse SQLAlchemy URL from string ''`),
+и повторное сохранение того же текста не помогает — переменную надо
+удалить, задеплоить, и добавить заново. Поэтому порядок ниже: базы первыми.
 
 `.railway/railway.ts` — задел на Infrastructure-as-Code (после 01.12.2026);
 сейчас его подключать не нужно.
@@ -326,8 +346,9 @@ ADMIN_PASSWORD=<тот же, что в api>
 NODE_ENV=production
 ```
 
-Если прокси отдаёт 502 «Backend недоступен», а `api` жив — приватная сеть
-Railway требует IPv6: замени в `railway.json` `--host 0.0.0.0` на `--host ::`.
+Приватная сеть Railway работает и по IPv4, и по IPv6 (`0.0.0.0` у api —
+достаточно). Если прокси отдаёт 502 «Backend недоступен», а `api` Online —
+проверь `API_URL`: порт должен совпадать с `PORT` у api (8000).
 
 ---
 

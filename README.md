@@ -114,7 +114,7 @@ python scripts/resolve_telegram_ids.py @channel1 @channel2
 
 | Сервис | `RAILWAY_DOCKERFILE_PATH` | Custom Start Command | Публичный домен |
 |---|---|---|---|
-| `api` | `backend/Dockerfile` | `alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port $PORT` | нет¹ |
+| `api` | `backend/Dockerfile` | `sh -c 'alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port $PORT'` | нет¹ |
 | `worker` | `backend/Dockerfile` | `celery -A app.tasks.celery_app worker --loglevel=info --concurrency=2 --max-tasks-per-child=200` | нет |
 | `scheduler` | `backend/Dockerfile` | `celery -A app.tasks.celery_app beat --loglevel=info --scheduler redbeat.RedBeatScheduler` | нет |
 | `telegram` | `backend/Dockerfile` | `python -m app.collectors.telegram_runner` | нет |
