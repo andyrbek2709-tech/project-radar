@@ -3,6 +3,7 @@
 import { Fragment, useEffect, useState } from "react";
 import Link from "next/link";
 import { api } from "@/lib/api";
+import { downloadAgentDigest } from "@/lib/download";
 import type { Dashboard, DailyReport } from "@/lib/types";
 
 const JOBS = [
@@ -48,19 +49,9 @@ export default function DashboardPage() {
     }
   }
 
-  /** Файл скачивается из браузера, а не отдаётся редиректом: прокси Next
-   *  не пробрасывает Content-Disposition, да и стучаться в бэкенд напрямую
-   *  из браузера нельзя — там Basic-авторизация. */
   async function downloadDigest() {
     try {
-      const text = await api.agentDigest();
-      const stamp = new Date().toISOString().slice(0, 10);
-      const url = URL.createObjectURL(new Blob([text], { type: "text/markdown;charset=utf-8" }));
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `radar-${stamp}.md`;
-      link.click();
-      URL.revokeObjectURL(url);
+      await downloadAgentDigest();
       setToast("Файл для агента выгружен");
       setTimeout(() => setToast(null), 3000);
     } catch (err) {
