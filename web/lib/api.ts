@@ -43,6 +43,15 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   dashboard: () => request<Dashboard>("/stats/dashboard"),
+
+  /** Markdown-выгрузка находок для агента. Не JSON — поэтому мимо request(). */
+  agentDigest: async (statuses = "RECOMMENDED,REVIEW_LATER", project?: string) => {
+    const qs = new URLSearchParams({ status: statuses });
+    if (project) qs.set("project", project);
+    const res = await fetch(`${BASE}/findings/export/agent?${qs}`, { cache: "no-store" });
+    if (!res.ok) throw new ApiError(`HTTP ${res.status}`, res.status);
+    return res.text();
+  },
   cost: () => request<Record<string, unknown>>("/stats/cost"),
 
   findings: (params: Record<string, string | number | undefined> = {}) => {
