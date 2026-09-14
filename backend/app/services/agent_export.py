@@ -17,18 +17,34 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.config import settings
-from app.models.analysis import Decision, FindingAnalysis
+from app.models.analysis import AnalysisType, Decision, FindingAnalysis
 from app.models.finding import Finding, FindingProjectMatch
 from app.models.project import Project, ProjectFeature
 
-# Порядок разделов внутри карточки. Ключ разбора → заголовок в файле.
-# Список явный, а не обход словаря: агент должен видеть поля в одном и том же
-# порядке от выгрузки к выгрузке, иначе diff между файлами нечитаем.
-_SECTIONS: tuple[tuple[str, str], ...] = (
+# Разборов у находки может быть два разных вида, и путать их нельзя.
+# project_match — дешёвый слой, он есть почти у всех: сравнение с проектом.
+# deep_analysis — дорогой, запускается выборочно: цена внедрения и риски.
+# Раньше выгрузка читала только ключи глубокого разбора, и у находок с одним
+# project_match в файл попадал единственный совпавший ключ what_we_have —
+# остальное, что модель написала, терялось молча.
+_DEEP_SECTIONS: tuple[tuple[str, str], ...] = (
     ("what_it_does", "Что делает"),
     ("what_we_have", "Что у нас уже есть"),
     ("expected_benefit", "Ожидаемая польза"),
     ("verdict_reason", "Почему такой вердикт"),
+)
+
+_MATCH_SECTIONS: tuple[tuple[str, str], ...] = (
+    ("what_it_offers", "Что предлагает"),
+    ("what_we_have", "Что у нас уже есть"),
+    ("why_relevant", "Почему это нам близко"),
+)
+
+# Порядок, в котором ищется разбор: сначала самый содержательный.
+_ANALYSIS_PRIORITY: tuple[str, ...] = (
+    AnalysisType.MANUAL_CHATGPT,
+    AnalysisType.DEEP_ANALYSIS,
+    AnalysisType.PROJECT_MATCH,
 )
 
 _LEVELS = {"low": "низкая", "medium": "средняя", "high": "высокая"}
@@ -160,19 +176,52 @@ def _card(
     if decision.reason:
         lines.append(f"**Решение движка:** {decision.reason}")
 
-    analysis = _latest_analysis(session, finding, project)
-    if analysis is None:
-        lines += ["", "_Глубокого разбора нет — решение принято по метрикам._"]
+    found = _latest_analysis(session, finding, project)
+    if found is None:
+        lines += ["", "_Разбора модели нет — решение принято по метрикам._"]
         return lines
 
-    lines += _analysis_sections(analysis)
+    kind, analysis = found
+    if kind == AnalysisType.PROJECT_MATCH:
+        lines += ["", "_Разбор поверхностный: глубокий анализ по этой находке "
+                  "не запускался._"]
+        lines += _match_sections(analysis)
+    else:
+        lines += _analysis_sections(analysis)
+    return lines
+
+
+def _match_sections(result: dict[str, Any]) -> list[str]:
+    """Дешёвый слой: что предлагает, что есть у нас, плюсы и минусы."""
+    lines: list[str] = []
+    for key, title in _MATCH_SECTIONS:
+        value = (result.get(key) or "").strip()
+        if value:
+            lines += ["", f"### {title}", "", value]
+
+    for key, title in (("advantages", "Плюсы"), ("disadvantages", "Минусы")):
+        items = [str(x).strip() for x in (result.get(key) or []) if str(x).strip()]
+        if items:
+            lines += ["", f"### {title}", ""]
+            lines += [f"- {item}" for item in items]
+
+    complexity = result.get("integration_complexity")
+    if complexity:
+        lines += ["", "### Цена внедрения", "", f"сложность интеграции {_level(complexity)}"]
+
     return lines
 
 
 def _latest_analysis(
     session: Session, finding: Finding, project: Project
-) -> dict[str, Any] | None:
-    row = session.execute(
+) -> tuple[str, dict[str, Any]] | None:
+    """Самый содержательный разбор находки по проекту.
+
+    Берётся не просто последний по времени: project_match пересчитывается
+    при каждой переоценке и легко оказывается свежее глубокого разбора,
+    который стоил денег. Порядок выбора задан явно.
+    """
+    rows = session.execute(
         select(FindingAnalysis)
         .where(
             FindingAnalysis.finding_id == finding.id,
@@ -180,17 +229,19 @@ def _latest_analysis(
             FindingAnalysis.status == "ok",
         )
         .order_by(FindingAnalysis.created_at.desc())
-        .limit(1)
-    ).scalar_one_or_none()
-    if row is None or not row.result:
-        return None
-    return row.result
+    ).scalars().all()
+
+    for wanted in _ANALYSIS_PRIORITY:
+        for row in rows:
+            if row.analysis_type == wanted and row.result:
+                return wanted, row.result
+    return None
 
 
 def _analysis_sections(result: dict[str, Any]) -> list[str]:
     lines: list[str] = []
 
-    for key, title in _SECTIONS:
+    for key, title in _DEEP_SECTIONS:
         value = (result.get(key) or "").strip()
         if value:
             lines += ["", f"### {title}", "", value]
