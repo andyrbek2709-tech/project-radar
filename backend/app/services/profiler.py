@@ -15,7 +15,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.analysis.embeddings import get_embedding_provider
-from app.analysis.llm import GroqClient, LLMError, LLMSchemaError
+from app.analysis.llm import GroqClient, get_analysis_client, LLMError, LLMSchemaError
 from app.analysis.prompts import PROMPT_VERSION, REPO_AUDIT_SYSTEM, build_repo_audit_prompt
 from app.analysis.schemas import RepoAuditResult
 from app.collectors.github_client import GitHubClient, GitHubError
@@ -196,7 +196,7 @@ def audit_repository(
     heuristic_stack = detect_stack_heuristically(files)
     audit.detected_stack = heuristic_stack
 
-    groq = groq or GroqClient()
+    groq = groq or get_analysis_client()
     if not groq.enabled:
         audit.status = "ok"
         audit.error = "Groq выключен — профиль построен только по эвристике"

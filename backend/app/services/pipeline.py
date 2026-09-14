@@ -17,7 +17,14 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.analysis.embeddings import get_embedding_provider
-from app.analysis.llm import GroqClient, LLMError, LLMRateLimited, LLMSchemaError
+from app.analysis.llm import (
+    GroqClient,
+    LLMError,
+    LLMRateLimited,
+    LLMSchemaError,
+    OpenAIClient,
+    get_analysis_client,
+)
 from app.analysis.prompts import (
     CLASSIFICATION_SYSTEM,
     PROJECT_MATCH_SYSTEM,
@@ -97,6 +104,7 @@ def _record_failure(
     analysis_type: str,
     model: str,
     digest: str,
+    provider: str = "groq",
 ) -> None:
     """Записать неудачную попытку анализа, не плодя строк.
 
@@ -133,7 +141,7 @@ def _record_failure(
             finding_id=finding_id,
             project_id=project_id,
             analysis_type=analysis_type,
-            provider="groq",
+            provider=provider,
             model=model,
             prompt_version=PROMPT_VERSION,
             input_digest=digest,
@@ -218,7 +226,7 @@ def process_raw_item(
     *,
     projects: list[Project],
     negative_keywords: set[str],
-    groq: GroqClient,
+    groq: GroqClient | OpenAIClient,
     stats: PipelineStats,
 ) -> None:
     source = session.get(Source, item.source_id)
@@ -328,7 +336,7 @@ def analyse_finding(
     *,
     repository: Repository | None,
     projects: list[Project],
-    groq: GroqClient,
+    groq: GroqClient | OpenAIClient,
     stats: PipelineStats,
 ) -> None:
     finding.status = FindingStatus.ANALYZING
@@ -400,7 +408,7 @@ def _classify(
     finding: Finding,
     repo_data: dict[str, Any] | None,
     project_dicts: list[dict[str, Any]],
-    groq: GroqClient,
+    groq: GroqClient | OpenAIClient,
 ) -> GroqClassification | None:
     user_prompt = build_classification_prompt(
         title=finding.title,
@@ -458,6 +466,7 @@ def _classify(
             analysis_type=AnalysisType.GROQ_CLASSIFICATION,
             model=groq.model,
             digest=digest,
+            provider=groq.provider,
         )
         log.warning("groq_classification_failed", finding_id=str(finding.id), error=str(exc)[:200])
         return None
@@ -482,7 +491,7 @@ def _classify(
     )
     usage.record(
         session,
-        provider="groq",
+        provider=result.provider,
         operation="classification",
         model=result.model,
         prompt_tokens=result.prompt_tokens,
@@ -501,7 +510,7 @@ def _match_project(
     repository: Repository | None,
     repo_data: dict[str, Any] | None,
     classification: GroqClassification,
-    groq: GroqClient,
+    groq: GroqClient | OpenAIClient,
     stats: PipelineStats,
 ) -> None:
     features = session.execute(
@@ -594,7 +603,7 @@ def _analyse_match(
     repo_data: dict[str, Any] | None,
     features: list[ProjectFeature],
     classification: GroqClassification,
-    groq: GroqClient,
+    groq: GroqClient | OpenAIClient,
 ) -> ProjectMatchAnalysis | None:
     if not groq.enabled:
         return None
@@ -645,6 +654,7 @@ def _analyse_match(
             analysis_type=AnalysisType.PROJECT_MATCH,
             model=groq.model,
             digest=digest,
+            provider=groq.provider,
         )
         log.warning(
             "project_match_llm_failed",
@@ -675,7 +685,7 @@ def _analyse_match(
     )
     usage.record(
         session,
-        provider="groq",
+        provider=result.provider,
         operation="project_match",
         model=result.model,
         prompt_tokens=result.prompt_tokens,
@@ -808,7 +818,7 @@ def run_pipeline(session: Session, *, batch_size: int | None = None) -> dict[str
         .limit(batch_size)
     ).scalars().all()
 
-    groq = GroqClient()
+    groq = get_analysis_client()
     rate_limited = False
 
     for item_id in item_ids:
@@ -895,7 +905,7 @@ def reanalyse_pending(
     session: Session,
     *,
     projects: list[Project],
-    groq: GroqClient,
+    groq: GroqClient | OpenAIClient,
     stats: PipelineStats,
     limit: int = 30,
 ) -> int:

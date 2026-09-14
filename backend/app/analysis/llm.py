@@ -273,17 +273,33 @@ class GroqClient:
 
 
 class OpenAIClient:
-    """Deep analysis. По умолчанию выключен (OPENAI_DEEP_ANALYSIS_ENABLED=false)."""
+    """Deep analysis и, по требованию, дешёвый массовый слой.
+
+    Изначально писался только под deep analysis, поэтому `enabled` смотрел
+    на OPENAI_DEEP_ANALYSIS_ENABLED. Для массового слоя это неверно: там флаг
+    другой, и включённый deep analysis не требуется. Отсюда `for_analysis`.
+    """
 
     provider = "openai"
 
-    def __init__(self, api_key: str | None = None, model: str | None = None) -> None:
+    def __init__(
+        self,
+        api_key: str | None = None,
+        model: str | None = None,
+        *,
+        for_analysis: bool = False,
+    ) -> None:
         self.api_key = api_key or settings.OPENAI_API_KEY
         self.model = model or settings.OPENAI_MODEL
         self.url = f"{settings.OPENAI_BASE_URL.rstrip('/')}/chat/completions"
+        self._for_analysis = for_analysis
 
     @property
     def enabled(self) -> bool:
+        if self._for_analysis:
+            # В роли массового слоя достаточно ключа: флаг deep analysis
+            # управляет вторым, дорогим слоем и к этой роли отношения не имеет.
+            return bool(self.api_key)
         return bool(settings.OPENAI_DEEP_ANALYSIS_ENABLED and self.api_key)
 
     def complete_structured(
@@ -327,6 +343,11 @@ class OpenAIClient:
             )
         latency_ms = int((time.monotonic() - started) * 1000)
 
+        if resp.status_code == 429:
+            retry_after = _retry_after_seconds(resp.headers, default=20.0)
+            raise LLMRateLimited(
+                f"OpenAI rate limit, retry-after={retry_after:g}s", retry_after=retry_after
+            )
         if resp.status_code >= 400:
             raise LLMError(f"OpenAI HTTP {resp.status_code}: {resp.text[:300]}")
 
@@ -353,12 +374,32 @@ class OpenAIClient:
         )
 
 
+def get_analysis_client() -> GroqClient | OpenAIClient:
+    """Клиент дешёвого массового слоя — классификация и сопоставление.
+
+    Groq дешевле на порядок, но на бесплатном тарифе упирается в лимит и
+    разбирает очередь сутками. Переключатель нужен, чтобы можно было один раз
+    прогнать накопленное через OpenAI и увидеть результат сегодня, а не
+    гадать, система не работает или это просто провайдер тормозит.
+
+    Обе реализации дают одинаковый complete_structured, поэтому pipeline
+    про выбор не знает — он берёт то, что вернёт фабрика.
+    """
+    if settings.ANALYSIS_PROVIDER.strip().lower() == "openai":
+        model = settings.ANALYSIS_MODEL or settings.OPENAI_MODEL
+        log_openai.info("analysis_provider_openai", model=model)
+        return OpenAIClient(model=model, for_analysis=True)
+    return GroqClient(model=settings.ANALYSIS_MODEL or None)
+
+
 __all__ = [
     "GroqClient",
     "OpenAIClient",
+    "get_analysis_client",
     "LLMResult",
     "LLMError",
     "LLMSchemaError",
+    "LLMRateLimited",
     "estimate_cost",
     "PRICING",
     "GROQ_STRICT_MODELS",
