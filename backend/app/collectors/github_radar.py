@@ -10,9 +10,10 @@ commit-активность, интересные форки.
 from __future__ import annotations
 
 import json
+import uuid
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
-from typing import Any, Iterable
+from typing import Any, Iterable, Sequence
 
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -223,6 +224,65 @@ def compute_growth(
         "stars_growth_ratio": ratio,
         "growth_window_days": (date.today() - old.captured_on).days,
     }
+
+
+_NO_GROWTH: dict[str, Any] = {
+    "stars_delta": None,
+    "stars_growth_ratio": None,
+    "growth_window_days": None,
+}
+
+
+def compute_growth_bulk(
+    session: Session,
+    repos: Sequence[Repository],
+    *,
+    window_days: int = GROWTH_WINDOW_DAYS,
+) -> dict[uuid.UUID, dict[str, Any]]:
+    """То же самое, что compute_growth, но двумя запросами на всю страницу.
+
+    В списке находок рост считался по каждой строке отдельно — это два SELECT
+    на репозиторий, то есть под сотню лишних запросов на страницу в полсотни
+    находок. Логика здесь повторяет compute_growth один в один, включая откат
+    на самый старый снапшот, когда в окно ничего не попало.
+    """
+    if not repos:
+        return {}
+
+    today = date.today()
+    cutoff = today - timedelta(days=window_days)
+    ids = [r.id for r in repos]
+
+    def _latest(where_older_than_cutoff: bool) -> dict[uuid.UUID, RepositorySnapshot]:
+        stmt = select(RepositorySnapshot).where(RepositorySnapshot.repository_id.in_(ids))
+        if where_older_than_cutoff:
+            stmt = stmt.where(RepositorySnapshot.captured_on <= cutoff)
+            order = RepositorySnapshot.captured_on.desc()
+        else:
+            order = RepositorySnapshot.captured_on.asc()
+        # DISTINCT ON — по одной строке на репозиторий силами БД, без выборки
+        # всей истории в питон. БД здесь всегда PostgreSQL (нужен pgvector).
+        stmt = stmt.distinct(RepositorySnapshot.repository_id).order_by(
+            RepositorySnapshot.repository_id, order
+        )
+        return {s.repository_id: s for s in session.execute(stmt).scalars().all()}
+
+    in_window = _latest(True)
+    oldest = _latest(False)
+
+    result: dict[uuid.UUID, dict[str, Any]] = {}
+    for repo in repos:
+        old = in_window.get(repo.id) or oldest.get(repo.id)
+        if old is None or old.captured_on >= today:
+            result[repo.id] = dict(_NO_GROWTH)
+            continue
+        delta = repo.stars - (old.stars or 0)
+        result[repo.id] = {
+            "stars_delta": delta,
+            "stars_growth_ratio": delta / old.stars if old.stars else None,
+            "growth_window_days": (today - old.captured_on).days,
+        }
+    return result
 
 
 def enrich_repository(
@@ -486,6 +546,7 @@ __all__ = [
     "upsert_repository",
     "snapshot_repository",
     "compute_growth",
+    "compute_growth_bulk",
     "enrich_repository",
     "get_or_create_source",
 ]

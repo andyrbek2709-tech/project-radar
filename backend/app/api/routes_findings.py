@@ -6,9 +6,10 @@ from datetime import date, datetime, timedelta, timezone
 
 from fastapi import APIRouter, HTTPException, Query, status
 from sqlalchemy import func, select
+from sqlalchemy.orm import selectinload
 
 from app.api.deps import CurrentUser, DbSession
-from app.collectors.github_radar import compute_growth
+from app.collectors.github_radar import compute_growth, compute_growth_bulk
 from app.models.analysis import (
     AnalysisType,
     Decision,
@@ -59,6 +60,7 @@ def list_findings(
     """
     stmt = (
         select(Finding, FindingProjectMatch, Decision, Project)
+        .options(selectinload(Finding.repository))
         .outerjoin(FindingProjectMatch, FindingProjectMatch.finding_id == Finding.id)
         .outerjoin(
             Decision,
@@ -96,15 +98,20 @@ def list_findings(
         .offset(offset)
     ).all()
 
+    # Рост звёзд и названия ближайших фич — по одному запросу на страницу,
+    # а не по два-три на строку. На полусотне находок это была разница между
+    # четырьмя запросами и двумя сотнями.
+    growth = compute_growth_bulk(db, [f.repository for f, *_ in rows if f.repository])
+    features = _feature_names(db, [m for _, m, _, _ in rows if m is not None])
+
     items: list[FindingListItem] = []
     for finding, match, decision, proj in rows:
         item = FindingListItem.model_validate(finding)
         if finding.repository is not None:
             item.repository = RepositoryOut.model_validate(finding.repository)
-            growth = compute_growth(db, finding.repository)
-            item.stars_delta = growth.get("stars_delta")
+            item.stars_delta = growth.get(finding.repository.id, {}).get("stars_delta")
         if match is not None:
-            item.match = _match_out(db, match, proj)
+            item.match = _match_out(match, proj, features)
         if decision is not None:
             item.decision = DecisionOut.model_validate(decision)
         items.append(item)
@@ -130,7 +137,8 @@ def get_finding(finding_id: uuid.UUID, db: DbSession, _: CurrentUser):
         .where(FindingProjectMatch.finding_id == finding_id)
         .order_by(FindingProjectMatch.radar_score.desc())
     ).all()
-    detail.matches = [_match_out(db, m, p) for m, p in matches]
+    features = _feature_names(db, [m for m, _ in matches])
+    detail.matches = [_match_out(m, p, features) for m, p in matches]
 
     detail.decisions = [
         DecisionOut.model_validate(d)
@@ -341,12 +349,26 @@ def review_queue(
     ]
 
 
-def _match_out(db, match: FindingProjectMatch, project: Project | None) -> MatchOut:  # noqa: ANN001
+def _feature_names(db, matches: list[FindingProjectMatch]) -> dict[uuid.UUID, str]:  # noqa: ANN001
+    """Названия ближайших фич одним запросом на всю выдачу."""
+    ids = {m.nearest_feature_id for m in matches if m.nearest_feature_id}
+    if not ids:
+        return {}
+    rows = db.execute(
+        select(ProjectFeature.id, ProjectFeature.name).where(ProjectFeature.id.in_(ids))
+    ).all()
+    return {row[0]: row[1] for row in rows}
+
+
+def _match_out(
+    match: FindingProjectMatch,
+    project: Project | None,
+    features: dict[uuid.UUID, str],
+) -> MatchOut:
     out = MatchOut.model_validate(match)
     if project is not None:
         out.project_slug = project.slug
         out.project_name = project.name
     if match.nearest_feature_id:
-        feature = db.get(ProjectFeature, match.nearest_feature_id)
-        out.nearest_feature_name = feature.name if feature else None
+        out.nearest_feature_name = features.get(match.nearest_feature_id)
     return out
