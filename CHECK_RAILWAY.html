@@ -1,0 +1,726 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Project Radar — проверка деплоя через Claude в Chrome</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  :root{
+    --bg:#0a0c10; --bg2:#0f1218; --card:#13171f; --card2:#181d26;
+    --line:#232a36; --line2:#2e3644;
+    --tx:#e6eaf0; --tx2:#9aa5b5; --tx3:#6b7687;
+    --ac:#5eead4; --ac2:#38bdf8;
+    --ok:#4ade80; --warn:#fbbf24; --bad:#f87171;
+  }
+  html{scroll-behavior:smooth}
+  body{
+    background:radial-gradient(1200px 700px at 15% -10%,#141b26 0%,transparent 60%),var(--bg);
+    color:var(--tx);
+    font:15px/1.6 ui-sans-serif,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+    padding:0 0 120px;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:960px;margin:0 auto;padding:0 24px}
+
+  header{padding:56px 0 34px;border-bottom:1px solid var(--line)}
+  .eyebrow{font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:var(--ac);font-weight:600;margin-bottom:14px}
+  h1{font-size:34px;line-height:1.15;font-weight:650;letter-spacing:-.02em}
+  h1 span{color:var(--tx3);font-weight:400}
+  .lede{margin-top:16px;color:var(--tx2);max-width:68ch;font-size:16px}
+  .meta{margin-top:22px;display:flex;gap:8px;flex-wrap:wrap}
+  .pill{font-size:12px;padding:5px 11px;border-radius:999px;border:1px solid var(--line2);color:var(--tx2);background:var(--bg2)}
+
+  .toc{margin:30px 0 0;display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:8px}
+  .toc a{display:block;padding:10px 12px;border:1px solid var(--line);border-radius:8px;color:var(--tx2);text-decoration:none;font-size:13px;background:var(--bg2);transition:.15s}
+  .toc a:hover{border-color:var(--ac);color:var(--tx)}
+  .toc a b{color:var(--tx3);font-weight:600;margin-right:8px;font-variant-numeric:tabular-nums}
+
+  section{margin-top:52px;scroll-margin-top:20px}
+  .sec-h{font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--tx3);font-weight:600;margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid var(--line)}
+  h2{font-size:22px;font-weight:620;letter-spacing:-.01em;margin-bottom:10px}
+  h3{font-size:15px;font-weight:620;margin:22px 0 8px;color:var(--tx)}
+  p{color:var(--tx2);max-width:72ch}
+  p + p{margin-top:10px}
+  .note{color:var(--tx3);font-size:13.5px}
+  a{color:var(--ac2)}
+
+  .card{background:linear-gradient(180deg,var(--card) 0%,var(--card2) 100%);border:1px solid var(--line);border-radius:14px;padding:22px;margin-top:16px;position:relative;overflow:hidden}
+  .card::before{content:"";position:absolute;inset:0 auto 0 0;width:3px;background:linear-gradient(180deg,var(--ac),transparent)}
+  .card.hero::before{background:linear-gradient(180deg,var(--ac2),transparent)}
+
+  .copybox{margin-top:14px;border:1px solid var(--line2);border-radius:10px;background:#0b0e13;overflow:hidden}
+  .copybox-top{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:9px 12px;border-bottom:1px solid var(--line);background:var(--bg2)}
+  .copybox-name{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--tx3);font-weight:600}
+  button.copy{
+    font:600 12px/1 ui-sans-serif,-apple-system,"Segoe UI",Roboto,sans-serif;
+    color:var(--bg);background:var(--ac);border:0;border-radius:7px;padding:8px 14px;cursor:pointer;transition:.15s;white-space:nowrap
+  }
+  button.copy:hover{filter:brightness(1.1)}
+  button.copy.done{background:var(--ok)}
+  pre{padding:14px;overflow-x:auto;font:12.5px/1.65 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:#cbd5e1;white-space:pre-wrap;word-break:break-word}
+  pre.env{white-space:pre;word-break:normal}
+  code{font:12.5px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:#0b0e13;border:1px solid var(--line);border-radius:5px;padding:1.5px 6px;color:#cbd5e1}
+
+  .tbl-scroll{overflow-x:auto;margin-top:16px;border:1px solid var(--line);border-radius:12px}
+  table{border-collapse:collapse;width:100%;min-width:640px;font-size:13.5px}
+  th,td{text-align:left;padding:11px 14px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--tx3);font-weight:600;background:var(--bg2)}
+  tr:last-child td{border-bottom:0}
+  td:first-child{color:var(--tx)}
+  td{color:var(--tx2)}
+
+  .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:7px;vertical-align:1px}
+  .dot.ok{background:var(--ok)}.dot.warn{background:var(--warn)}.dot.bad{background:var(--bad)}
+
+  ul,ol{margin:10px 0 0 20px;color:var(--tx2)}
+  li{margin-bottom:6px}
+  li::marker{color:var(--tx3)}
+
+  .links{display:grid;gap:8px;margin-top:14px}
+  .links a{display:flex;align-items:center;gap:10px;padding:11px 14px;border:1px solid var(--line);border-radius:9px;background:var(--bg2);text-decoration:none;color:var(--tx2);font:12.5px/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;transition:.15s;word-break:break-all}
+  .links a:hover{border-color:var(--ac);color:var(--tx)}
+  .links a b{flex:0 0 auto;font:600 11px/1 ui-sans-serif,sans-serif;letter-spacing:.1em;text-transform:uppercase;color:var(--ac);padding:4px 8px;border:1px solid var(--line2);border-radius:5px}
+
+  .callout{margin-top:16px;border:1px solid var(--line2);border-left:3px solid var(--warn);border-radius:0 10px 10px 0;padding:14px 16px;background:#14110a}
+  .callout.bad{border-left-color:var(--bad);background:#160e0e}
+  .callout b{color:var(--tx)}
+
+  footer{margin-top:64px;padding-top:22px;border-top:1px solid var(--line);color:var(--tx3);font-size:13px}
+
+  @media (max-width:560px){
+    .wrap{padding:0 16px}
+    h1{font-size:27px}
+    .copybox-top{flex-wrap:wrap}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="eyebrow">Project Radar · операционка</div>
+  <h1>Проверка деплоя <span>руками Claude в Chrome</span></h1>
+  <p class="lede">
+    Один промпт, который Claude в Chrome отработает от начала до конца: откроет приложение,
+    проверит связку <code>web → api → Postgres</code>, сверит переменные в дашборде Railway
+    и починит то, что разошлось. Ниже — сам промпт, карта диагнозов и эталонные блоки переменных.
+  </p>
+  <div class="meta">
+    <span class="pill">web-production-1aaaa.up.railway.app</span>
+    <span class="pill">7 сервисов</span>
+    <span class="pill">секреты не выводятся в чат</span>
+  </div>
+
+  <nav class="toc">
+    <a href="#launch"><b>00</b>Запуск радара</a>
+    <a href="#prompt"><b>01</b>Промпт проверки</a>
+    <a href="#links"><b>02</b>Ссылки для глаз</a>
+    <a href="#diag"><b>03</b>Симптом → причина</a>
+    <a href="#vars"><b>04</b>Эталон переменных</a>
+    <a href="#traps"><b>05</b>Известные ловушки</a>
+  </nav>
+</header>
+
+<section id="launch">
+  <div class="sec-h">00 — сделать так, чтобы поехало</div>
+  <h2>Промпт запуска</h2>
+  <p>
+    Деплой уже проверен и сходится. Этот промпт доводит радар до рабочего состояния:
+    подключает том Postgres, вливает исправления, заводит проект и прогоняет очередь
+    до первых находок. Порядок шагов важен — том обнуляет базу, поэтому он первый.
+  </p>
+
+  <div class="card hero">
+    <div class="copybox">
+      <div class="copybox-top">
+        <span class="copybox-name">Промпт запуска</span>
+        <button class="copy" data-target="p-launch">Копировать</button>
+      </div>
+<pre id="p-launch">Ты работаешь в браузере Chrome. Я залогинен в Railway и в GitHub.
+Проект Project Radar, фронт: https://web-production-1aaaa.up.railway.app
+Репозиторий: https://github.com/andyrbek2709-tech/project-radar
+
+Задача: довести радар до рабочего состояния. Сейчас он собирает данные,
+но не обрабатывает их. Делай шаги строго по порядку и после каждого
+проверяй результат — следующий шаг начинай только когда предыдущий сошёлся.
+
+=== ПРАВИЛА ===
+1. Значения секретов не выводи в ответ. Только «задано» / «пусто» / «число» /
+   «не число». Это касается всех *_KEY, *_TOKEN, *_HASH, *PASSWORD*, SESSION.
+2. Ничего не удаляй, кроме прямо описанного ниже.
+3. Если шаг не сошёлся — остановись, опиши что видишь, дальше не иди.
+4. Перед шагом 1 подтверди мне, что понял: он стирает текущую базу.
+
+=== ШАГ 1. Том для Postgres ===
+Сейчас у Postgres нет тома: база живёт в эфемерном слое контейнера и пропадёт
+при любом рестарте. Подключение тома само по себе требует рестарта, поэтому
+текущие 384 сырых записи будут потеряны. Это нормально: находок ноль, а сырьё
+пересоберётся автоматически в ближайшие два часа.
+
+Railway → проект → сервис Postgres → Settings → Volumes → Add Volume.
+Mount path: /var/lib/postgresql/data
+Дождись, пока сервис снова станет Active.
+
+Проверка: Postgres → Deployments → View Logs. Ожидается инициализация нового
+кластера («database system is ready to accept connections»). Если вместо этого
+ошибка про непустой каталог — скажи мне, не чини сам: за это отвечает
+переменная PGDATA=/var/lib/postgresql/data/pgdata, она должна быть задана.
+
+=== ШАГ 2. Влить исправления ===
+Открой https://github.com/andyrbek2709-tech/project-radar/pull/1
+Убедись, что это PR №1 из ветки claude/repository-analysis-pz43yt в main,
+с заголовком про четыре поломки и редактор профиля.
+Влей его кнопкой на странице PR и подтверди.
+
+Railway пересоберёт сервисы из main автоматически. Дождись, пока api, worker,
+scheduler, telegram и web снова станут Active. Это несколько минут.
+
+Проверка: открой
+https://web-production-1aaaa.up.railway.app/api/proxy/stats/dashboard
+Должен отдаться JSON. Поля findings_total и pending_raw_items будут по нулям —
+база новая, это ожидаемо. Если вместо JSON ошибка — остановись и опиши её.
+
+=== ШАГ 3. Проверить TELEGRAM_API_ID ===
+Railway → сервис telegram → Variables → TELEGRAM_API_ID.
+Нужно понять одно: это ЧИСЛО (например 21234567) или заглушка вроде
+«см. параграф 4», your_api_id, changeme, пустая строка.
+Само значение не выводи — напиши только «число» или «не число».
+
+Если не число: настоящий api_id берётся на https://my.telegram.org/apps.
+Я его введу сам, просто скажи мне об этом и иди дальше.
+То же самое проверь у сервиса worker.
+
+=== ШАГ 4. Завести проект ===
+Без профиля проекта pipeline не работает: ему не с чем сопоставлять находки.
+
+Открой https://web-production-1aaaa.up.railway.app/projects
+В блоке «Новый проект» заполни:
+  slug: enghub
+  Название: EngHub
+  GitHub-репозиторий: оставь пустым
+Нажми «Создать проект».
+
+Проверка: карточка EngHub появилась в списке.
+
+=== ШАГ 5. Заполнить профиль ===
+В карточке EngHub раскрой «Редактировать профиль» и заполни:
+
+  Чем занимается проект:
+    Инженерная документация и работа с нормативами: парсинг PDF,
+    извлечение таблиц, поиск по нормативным документам.
+
+  Как устроен сейчас:
+    Python, FastAPI, PostgreSQL. Документы разбираются построчно,
+    таблицы извлекаются полуавтоматически.
+
+  Ключевые слова поиска:
+    rag, document parsing, pdf extraction, table extraction, ocr
+
+  Приоритетные направления:
+    RAG, Document AI, парсинг PDF, поиск по нормативам
+
+  Стоп-слова:
+    crypto, nft, trading bot, game
+
+Нажми «Сохранить». Кнопка показывает число изменённых полей.
+
+Проверка: после сохранения в карточке видны ключевые слова чипами, и пропала
+надпись «Ключевых слов нет». Если на кнопке написано «Изменений нет» —
+значит поля не заполнились, попробуй ещё раз.
+
+=== ШАГ 6. Прогнать пайплайн ===
+Открой https://web-production-1aaaa.up.railway.app/
+Нажми «Собрать GitHub». Ожидается {"status":"queued", ...}.
+Подожди 5 минут — сбор идёт долго, это сотни запросов к GitHub.
+
+Обнови страницу. В таблице «Коллекторы» должна появиться свежая строка
+github_search со статусом ok и ненулевым items_fetched.
+В подзаголовке появится «N в очереди на разбор».
+
+Теперь нажми «Прогнать pipeline» и подожди ещё 5 минут.
+
+Проверка: обнови страницу. Плитки CRITICAL / RECOMMENDED / REVIEW LATER
+должны перестать быть все нулями, а «в очереди на разбор» — уменьшиться.
+
+Если очередь не уменьшается: Railway → worker → Deployments → View Logs,
+последние 30 строк в отчёт. Ищи строку про no_active_projects — если она
+есть, значит шаг 4 не сработал.
+
+=== ШАГ 7. Посмотреть результат ===
+Открой https://web-production-1aaaa.up.railway.app/radar
+Опиши, что видно: сколько находок, в каких статусах, есть ли у них
+причина решения текстом.
+
+Загляни также в https://web-production-1aaaa.up.railway.app/sources —
+после шага 2 там должны появиться источники kind=telegram, если
+TELEGRAM_SOURCE_IDS задан. Раньше они не сохранялись из-за бага,
+который этот PR чинит.
+
+И в таблицу «Коллекторы» на дашборде: если Telegram падает, там теперь
+появится строка telegram со статусом error и текстом причины.
+Приведи её дословно — по ней я пойму, что именно не так.
+
+=== ОТЧЁТ ===
+1. ТОМ: подключён / нет — что в логах Postgres
+2. ВЛИТО: да / нет — какие сервисы пересобрались
+3. TELEGRAM_API_ID: число / не число (у telegram и у worker)
+4. ПРОЕКТ: создан, профиль заполнен — сколько полей сохранилось
+5. ПАЙПЛАЙН: сколько собрано, сколько разобрано, сколько осталось в очереди
+6. НАХОДКИ: сколько и в каких статусах
+7. КОЛЛЕКТОРЫ: строки таблицы, особенно telegram с текстом ошибки
+8. ЧТО НЕ СОШЛОСЬ: где остановился и почему</pre>
+    </div>
+  </div>
+
+  <div class="callout bad">
+    <b>Шаг 1 стирает базу.</b> Это осознанная цена: сейчас у Postgres нет тома вообще,
+    и данные пропадут при первом же рестарте — в том числе при деплое из шага 2.
+    Терять нечего: находок ноль, а 384 сырых записи коллектор пересоберёт сам.
+    Делать наоборот — сначала деплой, потом том — значит потерять то же самое дважды.
+  </div>
+</section>
+
+<section id="prompt">
+  <div class="sec-h">01 — если что-то отвалится</div>
+  <h2>Промпт проверки</h2>
+  <p>
+    Скопируй целиком и вставь в Claude, встроенного в Chrome, при открытой вкладке браузера,
+    где ты уже залогинен в Railway. Промпт самодостаточный: в нём есть и проверки, и лечение,
+    и правило не светить секреты.
+  </p>
+
+  <div class="card hero">
+    <div class="copybox">
+      <div class="copybox-top">
+        <span class="copybox-name">Полный промпт</span>
+        <button class="copy" data-target="p-main">Копировать</button>
+      </div>
+<pre id="p-main">Ты работаешь в браузере Chrome. Я уже залогинен в Railway и в само приложение.
+Проект называется Project Radar. Публичный адрес фронта:
+https://web-production-1aaaa.up.railway.app
+
+Задача: проверить, что деплой поднялся и переменные окружения введены верно.
+Если найдёшь расхождение — поправь его прямо в дашборде Railway.
+
+=== ПРАВИЛА ===
+1. Значения секретов не выводи в ответ ни целиком, ни кусками. Это ADMIN_PASSWORD,
+   SECRET_KEY, GITHUB_TOKEN, GROQ_API_KEY, OPENAI_API_KEY, POSTGRES_PASSWORD,
+   TELEGRAM_API_HASH, TELEGRAM_SESSION_STRING, DATABASE_URL, REDIS_URL.
+   Про них пиши только: «задано», «пусто», «совпадает с api», «НЕ совпадает с api».
+2. Не удаляй сервисы, тома и переменные. Не жми Delete ни на чём.
+3. Менять значение переменной можно — но сначала напиши в ответе, что именно меняешь,
+   на что и почему. Redeploy делай только после правки и скажи, какой сервис перезапустил.
+4. Если страница не загрузилась — один повтор, потом опиши, что увидел, и иди дальше.
+5. В конце дай сводный отчёт по форме из последнего раздела.
+
+=== ШАГ 1. Фронт жив? ===
+Открой https://web-production-1aaaa.up.railway.app/
+Ожидается тёмный дашборд «Project Radar» с плитками статистики и кнопками запуска задач.
+Запиши, что реально видно. Если «Application failed to respond» — это ЛЕЧЕНИЕ D.
+
+=== ШАГ 2. Сквозная проверка web → api → Postgres ===
+Открой https://web-production-1aaaa.up.railway.app/api/proxy/stats/dashboard
+Это не страница, а чистый JSON. Скопируй ответ в отчёт целиком.
+
+Как читать:
+- Есть поля findings_total, by_status, cost, collectors → связка работает, иди к шагу 3.
+- {"detail":"Backend недоступен: ..."} → ЛЕЧЕНИЕ A.
+- 401 или {"detail":"Not authenticated"} → ЛЕЧЕНИЕ B.
+- HTTP 500 → ЛЕЧЕНИЕ C.
+- «Application failed to respond» → ЛЕЧЕНИЕ D.
+
+=== ШАГ 3. Остальные срезы ===
+Открой по очереди и скопируй ответы:
+  https://web-production-1aaaa.up.railway.app/api/proxy/projects
+  https://web-production-1aaaa.up.railway.app/api/proxy/sources
+  https://web-production-1aaaa.up.railway.app/api/proxy/settings/runtime
+
+Ожидается:
+- projects — массив. Пустой массив [] это нормально, если скрипт посева ещё не гоняли.
+- sources — массив источников сбора. Пустой тоже допустим на свежем деплое.
+- settings/runtime — объект с порогами: MIN_RELEVANCE_SCORE около 0.65,
+  CRITICAL_SCORE 0.80, RECOMMENDED_SCORE 0.60, REVIEW_LATER_SCORE 0.40,
+  DEDUP_COSINE_THRESHOLD 0.08. Если значения другие — просто отметь это, не исправляй.
+
+Учти: адрес /api/proxy/health работать НЕ будет и это не поломка. Прокси подставляет
+префикс /api/, а /health лежит вне его. Не пытайся его чинить.
+
+=== ШАГ 4. Состояние сервисов в Railway ===
+Открой https://railway.com/dashboard (старый адрес railway.app тоже редиректит)
+и зайди в проект, где лежат сервисы: api, worker, scheduler, telegram, web, Postgres, Redis.
+
+Для каждого сервиса запиши: имя, статус (Active / Crashed / Deploying / Build failed)
+и когда был последний деплой.
+
+Для каждого сервиса НЕ в статусе Active: открой Deployments → View Logs,
+скопируй последние 20 строк и приведи их в отчёте.
+
+=== ШАГ 5. Переменные ===
+У каждого сервиса открой Variables. Удобнее через кнопку RAW Editor — там весь блок текстом.
+Сверь наличие ключей по списку ниже. Значения секретов не выводи.
+
+api — обязаны быть:
+  RAILWAY_DOCKERFILE_PATH = backend/Dockerfile
+  PORT = 8000                       ← критично для приватной сети
+  DATABASE_URL = ${{Postgres.DATABASE_URL}}   ← проверь, что резолвится, а не пусто
+  REDIS_URL = ${{Redis.REDIS_URL}}
+  APP_ENV = production
+  AUTH_ENABLED = true
+  ADMIN_USERNAME = admin
+  ADMIN_PASSWORD = (непустой)
+  CORS_ORIGINS = https://${{web.RAILWAY_PUBLIC_DOMAIN}}
+  SECRET_KEY, GITHUB_TOKEN, GROQ_API_KEY, OPENAI_API_KEY = (непустые)
+  EMBEDDING_PROVIDER = openai
+  EMBEDDING_MODEL = text-embedding-3-small
+  EMBEDDING_DIM = 1536              ← после первого старта менять нельзя
+  GROQ_MODEL = openai/gpt-oss-20b
+  GROQ_ESCALATION_MODEL = openai/gpt-oss-120b
+
+web — обязаны быть:
+  RAILWAY_DOCKERFILE_PATH = web/Dockerfile
+  API_URL = http://${{api.RAILWAY_PRIVATE_DOMAIN}}:8000   ← порт обязан совпасть с PORT у api
+  ADMIN_USERNAME = admin            ← ровно то же, что в api
+  ADMIN_PASSWORD = (то же, что в api)
+  NODE_ENV = production
+  Переменной NEXT_PUBLIC_API_URL тут быть НЕ должно. Если есть — скажи, но не удаляй.
+
+worker — обязаны быть:
+  RAILWAY_DOCKERFILE_PATH = backend/Dockerfile
+  DATABASE_URL, REDIS_URL (референсы), SECRET_KEY (тот же, что в api)
+  GITHUB_TOKEN, GROQ_API_KEY, OPENAI_API_KEY
+  EMBEDDING_PROVIDER = openai, EMBEDDING_DIM = 1536
+  TELEGRAM_DELIVER_REPORT = true
+  TELEGRAM_API_ID, TELEGRAM_API_HASH, TELEGRAM_SESSION_STRING
+
+scheduler — обязаны быть:
+  RAILWAY_DOCKERFILE_PATH = backend/Dockerfile
+  REDIS_URL, DATABASE_URL, SECRET_KEY
+  RADAR_DAILY_TIME = 21:00, RADAR_TIMEZONE = Asia/Aqtau
+  Settings → Replicas должно быть 1. Если больше — поставь 1 и скажи об этом.
+
+telegram — обязаны быть:
+  RAILWAY_DOCKERFILE_PATH = backend/Dockerfile
+  DATABASE_URL, SECRET_KEY
+  TELEGRAM_ENABLED = true
+  TELEGRAM_API_ID, TELEGRAM_API_HASH, TELEGRAM_SESSION_STRING
+  TELEGRAM_SOURCE_IDS = (непустой, вида -1001234567890,-1009876543210)
+  Settings → Replicas должно быть 1. Если больше — поставь 1: две живые сессии
+  к одному аккаунту Telegram это риск бана.
+
+Postgres — обязаны быть:
+  POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB
+  PGDATA = /var/lib/postgresql/data/pgdata
+  DATABASE_URL (собранный из них)
+  Settings → образ должен быть pgvector/pgvector:pg17, а не обычный postgres.
+  Том должен быть смонтирован на /var/lib/postgresql/data.
+
+=== ШАГ 6. Start Command у каждого сервиса ===
+Settings → Deploy → Custom Start Command. Сверь дословно:
+  api:       sh -c 'alembic upgrade head &amp;&amp; exec uvicorn app.main:app --host 0.0.0.0 --port $PORT'
+  worker:    celery -A app.tasks.celery_app worker --loglevel=info --concurrency=2 --max-tasks-per-child=200
+  scheduler: celery -A app.tasks.celery_app beat --loglevel=info --scheduler redbeat.RedBeatScheduler
+  telegram:  python -m app.collectors.telegram_runner
+  web:       node server.js
+
+У api команда обязана быть обёрнута в sh -c: Railway выполняет Custom Start Command
+без шелла, и без обёртки && и $PORT не раскроются.
+Хост обязан быть 0.0.0.0, а не :: — healthcheck Railway ходит по IPv4.
+
+=== ЛЕЧЕНИЕ A. Прокси отдаёт «Backend недоступен» (502) ===
+Это значит: web поднялся, но не достучался до api. Проверь по порядку и останавливайся,
+как только нашёл причину:
+  1. web → Variables → API_URL. Должно быть ровно
+     http://${{api.RAILWAY_PRIVATE_DOMAIN}}:8000
+     Частые ошибки: https вместо http, публичный домен вместо приватного,
+     другой порт, хвостовой слэш.
+  2. api → Variables → PORT. Должно быть 8000. Если переменной нет — добавь.
+  3. api → Deployments. Если не Active — открой логи, это и есть причина.
+  4. api → Settings → Networking. Если у api выдан публичный домен, у него есть
+     Target port. Railway фиксирует его при ПЕРВОМ деплое и часто ставит 8080 —
+     должно быть 8000.
+После правки: Redeploy сервиса web, подожди, пока станет Active, и повтори ШАГ 2.
+
+=== ЛЕЧЕНИЕ B. 401 / Not authenticated ===
+Пароли у web и api разошлись. Открой Variables у обоих и сравни ADMIN_USERNAME
+и ADMIN_PASSWORD. Значения не выводи — скажи только, совпадают или нет.
+Если не совпадают: скопируй значение из api в web (не наоборот), Redeploy web,
+повтори ШАГ 2.
+
+=== ЛЕЧЕНИЕ C. HTTP 500 ===
+api жив, но упал внутри. Открой api → Deployments → View Logs, последние 30 строк.
+Ищи одно из двух:
+  - «could not translate host name» / «connection refused» / пустой DATABASE_URL →
+    известная ловушка Railway: ссылка ${{Postgres.DATABASE_URL}}, сохранённая ДО того,
+    как сервис Postgres был создан, резолвится в пустую строку навсегда.
+    Лечение: открой api → Variables, удали строку DATABASE_URL, сохрани,
+    заново добавь DATABASE_URL = ${{Postgres.DATABASE_URL}}, сохрани, Redeploy api.
+  - ошибка alembic / «relation does not exist» → миграции не прошли.
+    Приведи текст ошибки в отчёте, сам не чини.
+
+=== ЛЕЧЕНИЕ D. Application failed to respond ===
+Не поднялся сам web. Открой web → Deployments → View Logs.
+Проверь RAILWAY_DOCKERFILE_PATH = web/Dockerfile и Start Command = node server.js,
+а также Settings → Networking → Target port = 3000. Приведи последние 20 строк логов.
+
+=== ШАГ 7. Живой прогон (только если ШАГ 2 отдал нормальный JSON) ===
+Открой https://web-production-1aaaa.up.railway.app/
+На дашборде есть кнопки ручного запуска задач. Нажми «collect-github».
+Ожидается ответ вида {"status":"queued","job":"collect-github","task_id":"..."}.
+Подожди 2–3 минуты, обнови страницу и посмотри, изменились ли счётчики
+и появились ли строки в таблице коллекторов.
+Затем нажми «process-pipeline», подожди ещё 2–3 минуты, обнови.
+Потом открой https://web-production-1aaaa.up.railway.app/radar
+
+Если задача ставится в очередь, но счётчики не двигаются — значит не работает worker.
+Открой worker → Deployments → View Logs и приведи последние 20 строк.
+
+=== ОТЧЁТ ===
+Верни ровно в таком виде:
+
+1. ФРОНТ: открылся / не открылся — что видно
+2. СВЯЗКА web→api→БД: OK / код ошибки + первые строки JSON
+3. СЕРВИСЫ: таблица «сервис — статус — последний деплой»
+4. ПЕРЕМЕННЫЕ: список только тех, что отсутствуют, пусты или разошлись.
+   Секретные значения не печатать, писать «задано» / «пусто» / «не совпадает».
+5. ЧТО Я ИЗМЕНИЛ: список правок, либо «ничего не менял»
+6. ЧТО ОСТАЛОСЬ: что требует моего решения
+7. ЛОГИ: только по упавшим сервисам</pre>
+    </div>
+  </div>
+
+  <div class="callout">
+    <b>Почему промпт запрещает печатать значения.</b> Claude в Chrome видит содержимое
+    полей Variables целиком. <code>TELEGRAM_SESSION_STRING</code> — это полный доступ к твоему
+    аккаунту Telegram, а <code>GITHUB_TOKEN</code> и ключи Groq/OpenAI — деньги.
+    Ответ в чате — уже вынесенный наружу текст, поэтому правило стоит первым пунктом.
+  </div>
+</section>
+
+<section id="links">
+  <div class="sec-h">02</div>
+  <h2>Ссылки, которые можно открыть самому</h2>
+  <p>
+    Всё это открывается в обычной вкладке и возвращает JSON — тот же origin, CORS не мешает.
+    Первая ссылка проходит весь путь целиком: браузер → web → приватная сеть → api → Postgres.
+    Если она отдала JSON, остальное можно не смотреть.
+  </p>
+  <div class="links">
+    <a href="https://web-production-1aaaa.up.railway.app/" target="_blank" rel="noopener"><b>фронт</b>https://web-production-1aaaa.up.railway.app/</a>
+    <a href="https://web-production-1aaaa.up.railway.app/api/proxy/stats/dashboard" target="_blank" rel="noopener"><b>главное</b>/api/proxy/stats/dashboard</a>
+    <a href="https://web-production-1aaaa.up.railway.app/api/proxy/projects" target="_blank" rel="noopener"><b>проекты</b>/api/proxy/projects</a>
+    <a href="https://web-production-1aaaa.up.railway.app/api/proxy/sources" target="_blank" rel="noopener"><b>источники</b>/api/proxy/sources</a>
+    <a href="https://web-production-1aaaa.up.railway.app/api/proxy/settings/runtime" target="_blank" rel="noopener"><b>пороги</b>/api/proxy/settings/runtime</a>
+    <a href="https://railway.com/dashboard" target="_blank" rel="noopener"><b>railway</b>https://railway.com/dashboard</a>
+  </div>
+  <div class="callout">
+    <b>Адреса <code>/api/proxy/health</code> не существует</b> — и это не поломка.
+    Прокси фронта подставляет префикс <code>/api/</code>, а <code>/health</code> у бэкенда
+    лежит вне его. Проверять живость надо через <code>/api/proxy/stats/dashboard</code>.
+  </div>
+</section>
+
+<section id="diag">
+  <div class="sec-h">03</div>
+  <h2>Симптом → причина → что править</h2>
+  <div class="tbl-scroll">
+  <table>
+    <thead><tr><th>Что видно</th><th>Причина</th><th>Где чинить</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><span class="dot ok"></span>JSON с <code>findings_total</code></td>
+        <td>Связка целиком работает</td>
+        <td>—</td>
+      </tr>
+      <tr>
+        <td><span class="dot bad"></span><code>Backend недоступен</code>, 502</td>
+        <td><code>web</code> не видит <code>api</code> по приватной сети</td>
+        <td><code>API_URL</code> у web, <code>PORT=8000</code> у api, Target port домена api</td>
+      </tr>
+      <tr>
+        <td><span class="dot bad"></span>401 / <code>Not authenticated</code></td>
+        <td>Пароли Basic-auth разошлись</td>
+        <td><code>ADMIN_USERNAME</code>/<code>ADMIN_PASSWORD</code> у web ≠ у api</td>
+      </tr>
+      <tr>
+        <td><span class="dot bad"></span>HTTP 500</td>
+        <td><code>api</code> жив, база нет</td>
+        <td>Логи api: пустой <code>DATABASE_URL</code> или не прошёл alembic</td>
+      </tr>
+      <tr>
+        <td><span class="dot bad"></span>Application failed to respond</td>
+        <td>Не поднялся сам <code>web</code></td>
+        <td>Логи web, <code>RAILWAY_DOCKERFILE_PATH</code>, Target port 3000</td>
+      </tr>
+      <tr>
+        <td><span class="dot warn"></span><code>/radar</code> открылся, но пустой</td>
+        <td>Штатно на свежем деплое</td>
+        <td>Прогнать <code>collect-github</code>, затем <code>process-pipeline</code></td>
+      </tr>
+      <tr>
+        <td><span class="dot warn"></span>Задача ставится, счётчики стоят</td>
+        <td>Не работает <code>worker</code></td>
+        <td>Логи worker, <code>REDIS_URL</code></td>
+      </tr>
+      <tr>
+        <td><span class="dot warn"></span>Ничего не происходит по расписанию</td>
+        <td>Не работает <code>scheduler</code></td>
+        <td>Логи scheduler, <code>REDIS_URL</code>, RedBeat в Start Command</td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section id="vars">
+  <div class="sec-h">04</div>
+  <h2>Эталонные блоки переменных</h2>
+  <p>
+    Для RAW Editor в Railway. Секретные значения оставлены плейсхолдерами — подставь свои.
+    Полная версия с обоснованием каждого числа — в <code>docs/RAILWAY_VARIABLES.md</code>.
+  </p>
+
+  <div class="card">
+    <h3>web — единственный публичный сервис</h3>
+    <p class="note">Самый частый источник 502. <code>ADMIN_*</code> здесь обычные переменные, не <code>NEXT_PUBLIC_*</code>: Basic-auth подставляет серверный прокси, в браузер креды не уходят.</p>
+    <div class="copybox">
+      <div class="copybox-top"><span class="copybox-name">web</span><button class="copy" data-target="v-web">Копировать</button></div>
+<pre class="env" id="v-web">RAILWAY_DOCKERFILE_PATH=web/Dockerfile
+API_URL=http://${{api.RAILWAY_PRIVATE_DOMAIN}}:8000
+ADMIN_USERNAME=admin
+ADMIN_PASSWORD=&lt;тот же, что в api&gt;
+NODE_ENV=production</pre>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>api — критичная часть</h3>
+    <p class="note">Без <code>PORT=8000</code> адрес api в приватной сети непредсказуем, и <code>web</code> его не найдёт.</p>
+    <div class="copybox">
+      <div class="copybox-top"><span class="copybox-name">api — инфраструктура и доступ</span><button class="copy" data-target="v-api">Копировать</button></div>
+<pre class="env" id="v-api">RAILWAY_DOCKERFILE_PATH=backend/Dockerfile
+DATABASE_URL=${{Postgres.DATABASE_URL}}
+REDIS_URL=${{Redis.REDIS_URL}}
+PORT=8000
+
+APP_ENV=production
+SECRET_KEY=&lt;длинная случайная строка&gt;
+TIMEZONE=Asia/Aqtau
+LOG_JSON=true
+
+AUTH_ENABLED=true
+ADMIN_USERNAME=admin
+ADMIN_PASSWORD=&lt;тот же, что в web&gt;
+CORS_ORIGINS=https://${{web.RAILWAY_PUBLIC_DOMAIN}}
+
+EMBEDDING_PROVIDER=openai
+EMBEDDING_MODEL=text-embedding-3-small
+EMBEDDING_DIM=1536</pre>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Start Command — дословно</h3>
+    <p class="note">Railway выполняет Custom Start Command без шелла. У <code>api</code> обёртка <code>sh -c</code> обязательна, иначе <code>&amp;&amp;</code> и <code>$PORT</code> не раскроются.</p>
+    <div class="copybox">
+      <div class="copybox-top"><span class="copybox-name">api</span><button class="copy" data-target="c-api">Копировать</button></div>
+<pre id="c-api">sh -c 'alembic upgrade head &amp;&amp; exec uvicorn app.main:app --host 0.0.0.0 --port $PORT'</pre>
+    </div>
+    <div class="copybox">
+      <div class="copybox-top"><span class="copybox-name">worker</span><button class="copy" data-target="c-worker">Копировать</button></div>
+<pre id="c-worker">celery -A app.tasks.celery_app worker --loglevel=info --concurrency=2 --max-tasks-per-child=200</pre>
+    </div>
+    <div class="copybox">
+      <div class="copybox-top"><span class="copybox-name">scheduler</span><button class="copy" data-target="c-sched">Копировать</button></div>
+<pre id="c-sched">celery -A app.tasks.celery_app beat --loglevel=info --scheduler redbeat.RedBeatScheduler</pre>
+    </div>
+    <div class="copybox">
+      <div class="copybox-top"><span class="copybox-name">telegram</span><button class="copy" data-target="c-tg">Копировать</button></div>
+<pre id="c-tg">python -m app.collectors.telegram_runner</pre>
+    </div>
+    <div class="copybox">
+      <div class="copybox-top"><span class="copybox-name">web</span><button class="copy" data-target="c-web">Копировать</button></div>
+<pre id="c-web">node server.js</pre>
+    </div>
+  </div>
+</section>
+
+<section id="traps">
+  <div class="sec-h">05</div>
+  <h2>Четыре ловушки, на которых этот деплой уже спотыкался</h2>
+
+  <div class="card">
+    <h3>1. Ссылка на Postgres, сохранённая слишком рано</h3>
+    <p>
+      <code>${{Postgres.DATABASE_URL}}</code>, сохранённая до того, как сервис Postgres был создан,
+      резолвится в пустую строку — и остаётся пустой навсегда, даже когда сервис появился.
+      Лечение: удалить переменную, сохранить, добавить заново, сохранить, Redeploy.
+    </p>
+  </div>
+
+  <div class="card">
+    <h3>2. Target port домена фиксируется первым деплоем</h3>
+    <p>
+      Railway запоминает порт при самом первом деплое и часто ставит <code>8080</code>.
+      У <code>api</code> он должен быть <code>8000</code>, у <code>web</code> — <code>3000</code>.
+      Правится в Settings → Networking у самого домена, а не в переменных.
+    </p>
+  </div>
+
+  <div class="card">
+    <h3>3. Custom Start Command без шелла</h3>
+    <p>
+      Команда <code>api</code> содержит <code>&amp;&amp;</code> и <code>$PORT</code> — без обёртки
+      <code>sh -c '...'</code> они попадут в uvicorn как литералы и контейнер не стартует.
+    </p>
+  </div>
+
+  <div class="card">
+    <h3>4. Хост uvicorn — только <code>0.0.0.0</code></h3>
+    <p>
+      Healthcheck и публичный прокси Railway ходят по IPv4. С <code>--host ::</code> контейнер
+      получается IPv6-only, healthcheck не доходит, и деплой падает через пять минут
+      без единой строки ошибки в логах приложения.
+    </p>
+  </div>
+</section>
+
+<footer>
+  Project Radar · этот файл лежит в корне репозитория как <code>CHECK_RAILWAY.html</code>.
+  Эталон переменных — <code>docs/RAILWAY_VARIABLES.md</code>, архитектура — <code>docs/ARCHITECTURE.md</code>.
+</footer>
+
+</div>
+
+<script>
+document.querySelectorAll("button.copy").forEach(function (btn) {
+  btn.addEventListener("click", function () {
+    var el = document.getElementById(btn.dataset.target);
+    if (!el) return;
+    var text = el.innerText;
+    var done = function () {
+      var old = btn.textContent;
+      btn.textContent = "Скопировано";
+      btn.classList.add("done");
+      setTimeout(function () { btn.textContent = old; btn.classList.remove("done"); }, 1600);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(done, function () { fallback(text, done); });
+    } else {
+      fallback(text, done);
+    }
+  });
+});
+function fallback(text, done) {
+  var ta = document.createElement("textarea");
+  ta.value = text;
+  ta.style.position = "fixed";
+  ta.style.opacity = "0";
+  document.body.appendChild(ta);
+  ta.select();
+  try { document.execCommand("copy"); done(); } catch (e) { /* молча */ }
+  document.body.removeChild(ta);
+}
+</script>
+</body>
+</html>

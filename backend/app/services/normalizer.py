@@ -18,6 +18,11 @@ from app.models.finding import FindingKind
 # Параметры-мусор, которые не влияют на содержимое страницы.
 _TRACKING_PREFIXES = ("utm_", "ref_", "mc_", "pk_", "yclid", "fbclid", "gclid", "_ga")
 
+# Хост: минимум одна точка, без пробелов и служебных символов.
+# Без этой проверки urlparse("https://" + "не ссылка") отдаёт netloc "не ссылка",
+# и любой кусок текста превращался бы в «ссылку».
+_HOSTNAME_RE = re.compile(r"^[^\s/@:]+(?:\.[^\s/@:.]+)+$")
+
 _GITHUB_REPO_RE = re.compile(
     r"https?://(?:www\.)?github\.com/([A-Za-z0-9][A-Za-z0-9._-]*)/([A-Za-z0-9][A-Za-z0-9._-]*)",
     re.IGNORECASE,
@@ -84,6 +89,8 @@ def normalize_url(url: str | None) -> str | None:
         return None
 
     netloc = parsed.netloc.lower()
+    if not _HOSTNAME_RE.match(netloc.split("@")[-1].split(":")[0]):
+        return None
     if netloc.startswith("www."):
         netloc = netloc[4:]
     if netloc.endswith(":443"):

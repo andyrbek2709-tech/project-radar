@@ -10,6 +10,12 @@
 from __future__ import annotations
 
 import sys
+from pathlib import Path
+
+# Запуск как скрипта кладёт в sys.path каталог scripts/, а не корень backend/,
+# поэтому `python scripts/<name>.py` падал с ModuleNotFoundError: No module named 'app'
+# — и локально, и в контейнере (WORKDIR /app, PYTHONPATH не задан).
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from sqlalchemy import select
 
