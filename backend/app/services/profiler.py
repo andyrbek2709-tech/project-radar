@@ -47,6 +47,21 @@ AUDIT_FILES = [
 # Каталоги, наличие которых само по себе говорит об архитектуре.
 AUDIT_DIRS = ["app", "src", "backend", "frontend", "api", "services", "web", "migrations"]
 
+# Монорепозиторий прячет настоящий стек на уровень ниже корня. У ai-institut в
+# корневом package.json одна строка про exceljs, а Express, Supabase и OCR лежат
+# в services/api-server; у Sas_vformate то же самое в apps/api. Аудит, читавший
+# только корень, видел заглушку и отдавал в промпт пустой current_stack — модель
+# дописывала стек сама, и так EngHub на Express попал в радар как FastAPI.
+WORKSPACE_DIRS = ("services", "apps", "packages", "backend", "frontend", "web", "api", "bot", "bots")
+
+# Внутри воркспейса читаем только манифесты: README подпакета стек не уточняет,
+# а запрос к GitHub тратит.
+WORKSPACE_MANIFESTS = ("package.json", "requirements.txt", "pyproject.toml", "go.mod", "Cargo.toml")
+
+# Потолок на вложенные манифесты: у ai-institut в services/ десяток сервисов,
+# и без ограничения один аудит съедает заметную долю часового лимита GitHub API.
+MAX_WORKSPACE_FILES = 12
+
 # Детекторы стека по зависимостям — работают даже без LLM.
 STACK_SIGNATURES: dict[str, tuple[str, ...]] = {
     "fastapi": ("backend", "FastAPI"),
@@ -77,7 +92,98 @@ STACK_SIGNATURES: dict[str, tuple[str, ...]] = {
     "telethon": ("integrations", "Telethon"),
     "httpx": ("backend", "httpx"),
     "docker": ("infra", "Docker"),
+    # Node-бэкенды: без них Express-проект определялся как «фронтенд на React».
+    "express": ("backend", "Express"),
+    "fastify": ("backend", "Fastify"),
+    "@nestjs/core": ("backend", "NestJS"),
+    "prisma": ("backend", "Prisma"),
+    "drizzle-orm": ("backend", "Drizzle ORM"),
+    "turbo": ("infra", "Turborepo"),
+    "vite": ("frontend", "Vite"),
+    "wrangler": ("infra", "Cloudflare Workers"),
+    "@supabase/supabase-js": ("database", "Supabase"),
+    "aiosqlite": ("database", "SQLite"),
+    # Парсинг и OCR на стороне Node — раньше ловился только питоновский Tesseract.
+    "tesseract.js": ("parsing", "Tesseract.js"),
+    "pymupdf": ("parsing", "PyMuPDF"),
+    "python-docx": ("parsing", "python-docx"),
+    "openpyxl": ("parsing", "openpyxl"),
+    "exceljs": ("parsing", "ExcelJS"),
+    "fpdf": ("parsing", "FPDF"),
+    # CAD — отдельная область, в общие «parsing»/«backend» её сваливать нельзя.
+    "cadquery": ("cad", "CadQuery"),
+    "ezdxf": ("cad", "ezdxf"),
+    "ifcopenshell": ("cad", "IfcOpenShell"),
+    "dxf-parser": ("cad", "dxf-parser"),
+    "python-telegram-bot": ("integrations", "python-telegram-bot"),
+    "aiogram": ("integrations", "aiogram"),
+    "telegraf": ("integrations", "Telegraf"),
 }
+
+
+def _signature_pattern(signature: str) -> str:
+    """\\b вокруг «@nestjs/core» не сработает: рядом с @ и / нет границы слова,
+    и пакет никогда не находился. Границу ставим только там, где она осмысленна."""
+    left = r"\b" if signature[:1].isalnum() else ""
+    right = r"\b" if signature[-1:].isalnum() else ""
+    return left + re.escape(signature) + right
+
+
+def _fetch_text(client: GitHubClient, full_name: str, path: str) -> str | None:
+    """Содержимое одного файла репозитория. None — если файла нет или он бинарный."""
+    try:
+        resp = client._request("GET", f"/repos/{full_name}/contents/{path}", allow_404=True)
+    except GitHubError:
+        return None
+    if resp.status != 200 or not isinstance(resp.data, dict):
+        return None
+    content = resp.data.get("content")
+    if resp.data.get("encoding") != "base64" or not content:
+        return None
+    try:
+        return base64.b64decode(content).decode("utf-8", errors="replace")[:12000]
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _fetch_workspace_manifests(
+    client: GitHubClient, full_name: str, root_entries: dict[str, Any]
+) -> dict[str, str]:
+    """Манифесты пакетов монорепозитория: services/api-server/package.json и такое же.
+
+    Ровно один уровень вложенности. Глубже начинается перебор всего дерева, а
+    стек в двухуровневых воркспейсах (pnpm, turbo, services/*) виден уже здесь.
+    """
+    found: dict[str, str] = {}
+    for workspace in WORKSPACE_DIRS:
+        if len(found) >= MAX_WORKSPACE_FILES:
+            break
+        entry = root_entries.get(workspace)
+        if not entry or entry.get("type") != "dir":
+            continue
+        try:
+            listing = client._request(
+                "GET", f"/repos/{full_name}/contents/{workspace}", allow_404=True
+            )
+        except GitHubError:
+            continue
+        if listing.status != 200 or not isinstance(listing.data, list):
+            continue
+
+        for child in listing.data:
+            if len(found) >= MAX_WORKSPACE_FILES:
+                break
+            if not isinstance(child, dict) or child.get("type") != "dir":
+                continue
+            for manifest in WORKSPACE_MANIFESTS:
+                path = f"{workspace}/{child['name']}/{manifest}"
+                text = _fetch_text(client, full_name, path)
+                if text is not None:
+                    found[path] = text
+                    break  # один манифест на пакет — язык пакета уже ясен
+    if found:
+        log.info("audit_workspace_manifests", repo=full_name, count=len(found))
+    return found
 
 
 def fetch_repo_files(client: GitHubClient, full_name: str) -> tuple[dict[str, str], str | None]:
@@ -103,20 +209,12 @@ def fetch_repo_files(client: GitHubClient, full_name: str) -> tuple[dict[str, st
     for filename in AUDIT_FILES:
         if filename not in present:
             continue
-        try:
-            resp = client._request(
-                "GET", f"/repos/{full_name}/contents/{filename}", allow_404=True
-            )
-        except GitHubError:
-            continue
-        if resp.status != 200 or not isinstance(resp.data, dict):
-            continue
-        content = resp.data.get("content")
-        if resp.data.get("encoding") == "base64" and content:
-            try:
-                files[filename] = base64.b64decode(content).decode("utf-8", errors="replace")[:12000]
-            except Exception:  # noqa: BLE001
-                continue
+        text = _fetch_text(client, full_name, filename)
+        if text is not None:
+            files[filename] = text
+
+    for path, text in _fetch_workspace_manifests(client, full_name, present).items():
+        files[path] = text
 
     try:
         commits = client._request(
@@ -136,17 +234,21 @@ def detect_stack_heuristically(files: dict[str, str]) -> dict[str, list[str]]:
     Работает как база: LLM потом дополняет, но не заменяет — то, что видно
     в requirements.txt, гадать не нужно.
     """
+    # Сравниваем по имени файла, а не по полному пути: манифест пакета приходит
+    # как "services/api-server/package.json" и в прежний набор строк не попадал.
+    manifests = {
+        "requirements.txt", "pyproject.toml", "package.json",
+        "docker-compose.yml", "docker-compose.yaml", "Dockerfile",
+        "go.mod", "Cargo.toml",
+    }
     blob = "\n".join(
         content.lower()
         for name, content in files.items()
-        if name in {
-            "requirements.txt", "pyproject.toml", "package.json",
-            "docker-compose.yml", "docker-compose.yaml", "Dockerfile",
-        }
+        if name.rsplit("/", 1)[-1] in manifests
     )
     stack: dict[str, list[str]] = {}
     for signature, (area, label) in STACK_SIGNATURES.items():
-        if re.search(rf"\b{re.escape(signature)}\b", blob):
+        if re.search(_signature_pattern(signature), blob):
             stack.setdefault(area, [])
             if label not in stack[area]:
                 stack[area].append(label)
