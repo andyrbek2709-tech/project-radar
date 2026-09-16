@@ -35,6 +35,10 @@ from app.core.db import session_scope
 from app.core.logging import configure_logging, get_logger
 from app.data.project_profiles import PROJECTS, apply_spec
 from app.models.project import Project
+from app.services.profile_reanalysis import (
+    profile_changes_need_reanalysis,
+    requeue_project_findings,
+)
 from app.services.profiler import (
     audit_repository,
     create_project_with_audit,
@@ -111,6 +115,16 @@ def main() -> int:
 
                 # Профиль изменился — эмбеддинг по старому тексту больше не описывает проект.
                 refresh_project_embedding(session, project)
+
+                # ...и разбор находок тоже сделан по старому профилю. Сами они
+                # лежат в DECIDED, откуда переоценка их не берёт, поэтому
+                # возвращаем явно — иначе выгрузка продолжит описывать проект
+                # так, как он выглядел до правки.
+                if profile_changes_need_reanalysis(changed):
+                    requeued = requeue_project_findings(session, project.id, trigger=slug)
+                    if requeued:
+                        print(f"    → на переоценку возвращено находок: {requeued}")
+
                 if args.audit and project.github_repository:
                     audit_repository(session, project)
 

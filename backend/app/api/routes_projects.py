@@ -19,6 +19,10 @@ from app.schemas import (
     ProjectOut,
     ProjectUpdate,
 )
+from app.services.profile_reanalysis import (
+    profile_changes_need_reanalysis,
+    requeue_project_findings,
+)
 from app.services.profiler import audit_repository, refresh_project_embedding
 
 router = APIRouter(prefix="/projects", tags=["projects"])
@@ -77,8 +81,13 @@ def update_project(
 
     changes = payload.model_dump(exclude_unset=True)
     locked = set(project.profile_locked_fields or [])
+    actually_changed: list[str] = []
 
     for field_name, value in changes.items():
+        # Сравниваем до записи: присланное, но совпадающее значение полем
+        # изменённым не считается и переоценку находок не запускает.
+        if getattr(project, field_name, None) != value:
+            actually_changed.append(field_name)
         setattr(project, field_name, value)
         if field_name not in {"is_active", "name"}:
             locked.add(field_name)
@@ -88,6 +97,13 @@ def update_project(
         project.profile_source = "hybrid"
 
     refresh_project_embedding(db, project)
+
+    # Разбор находок сделан по прежнему профилю, а лежат они в DECIDED, откуда
+    # переоценка их не берёт. Возвращаем явно, иначе правка профиля через
+    # интерфейс не дойдёт ни до одной уже разобранной находки.
+    if profile_changes_need_reanalysis(actually_changed):
+        requeue_project_findings(db, project.id, trigger=project.slug)
+
     db.flush()
     return _detail(db, project)
 
