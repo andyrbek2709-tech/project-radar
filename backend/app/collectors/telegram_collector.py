@@ -217,9 +217,10 @@ async def collect_source(client: Any, session: Session, source: Source) -> dict[
         _pause_source(source, exc.seconds)
         return {"fetched": 0, "stored": 0, "flood_wait": exc.seconds}
     except Exception as exc:  # noqa: BLE001
-        source.last_error = f"resolve failed: {safe_error(exc, 200)}"
+        error = f"resolve failed: {safe_error(exc, 200)}"
+        source.last_error = error
         log.warning("telegram_resolve_failed", source=source.external_id, error=safe_error(exc, 200))
-        return {"fetched": 0, "stored": 0}
+        return {"fetched": 0, "stored": 0, "error": error}
 
     if not source.title or source.title == source.external_id:
         source.title = getattr(entity, "title", None) or getattr(entity, "username", None) or source.external_id
@@ -265,8 +266,14 @@ async def collect_source(client: Any, session: Session, source: Source) -> dict[
         _pause_source(source, exc.seconds)
         log.warning("telegram_flood_wait", source=source.external_id, seconds=exc.seconds)
     except Exception as exc:  # noqa: BLE001
-        source.last_error = safe_error(exc, 300)
+        error = safe_error(exc, 300)
+        source.last_error = error
         log.warning("telegram_collect_failed", source=source.external_id, error=safe_error(exc, 200))
+        if max_seen > min_id:
+            cursor.last_item_id = str(max_seen)
+        source.last_run_at = datetime.now(timezone.utc)
+        session.flush()
+        return {"fetched": fetched, "stored": stored, "error": error}
 
     if max_seen > min_id:
         cursor.last_item_id = str(max_seen)
@@ -306,6 +313,7 @@ async def collect_all(session: Session) -> dict[str, Any]:
     session.flush()
 
     total_fetched = total_stored = 0
+    source_errors: list[str] = []
     try:
         client = build_client()
         async with client:
@@ -313,6 +321,9 @@ async def collect_all(session: Session) -> dict[str, Any]:
                 result = await collect_source(client, session, source)
                 total_fetched += result.get("fetched", 0)
                 total_stored += result.get("stored", 0)
+                error = result.get("error")
+                if error:
+                    source_errors.append(f"{source.external_id}: {error}")
                 # Между каналами — небольшая пауза, чтобы не выглядеть скриптом.
                 await asyncio.sleep(1.0)
     except Exception as exc:
@@ -333,20 +344,32 @@ async def collect_all(session: Session) -> dict[str, Any]:
 
     run.items_fetched = total_fetched
     run.items_new = total_stored
-    run.status = "ok"
     run.finished_at = datetime.now(timezone.utc)
+
+    # Все каналы упали (bad chat id, бан, FloodWait) — статус "ok" с нулями
+    # неотличим от штатного «ничего нового». Раз ни один канал не прочитался,
+    # это сбой, и он обязан быть виден в таблице «Коллекторы».
+    if source_errors and not total_fetched:
+        run.status = "error"
+        run.error = "; ".join(source_errors)[:900]
+    else:
+        run.status = "ok"
+        if source_errors:
+            run.error = "; ".join(source_errors)[:900]
 
     log.info(
         "telegram_collect_done",
         sources=len(sources),
         fetched=total_fetched,
         stored=total_stored,
+        errors=len(source_errors),
     )
     return {
-        "status": "ok",
+        "status": run.status,
         "sources": len(sources),
         "fetched": total_fetched,
         "stored": total_stored,
+        "errors": source_errors,
     }
 
 
