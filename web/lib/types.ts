@@ -132,6 +132,41 @@ export interface Source {
   items_collected: number;
 }
 
+/** Разбор «почему Telegram отдаёт 0/0» — по каждому каналу отдельно. */
+export interface TelegramSourceStatus {
+  external_id: string;
+  title: string | null;
+  is_active: boolean;
+  paused: boolean;
+  paused_until: string | null;
+  last_run_at: string | null;
+  last_error: string | null;
+  cursor_last_item_id: string | null;
+  history_limit: number;
+  items_collected: number;
+  last_published_at: string | null;
+  last_collected_at: string | null;
+  diagnosis: string;
+}
+
+export interface TelegramStatus {
+  enabled: boolean;
+  configured_ids: string[];
+  configured_count: number;
+  not_yet_registered: string[];
+  orphaned_sources: string[];
+  scan_interval_minutes: number;
+  history_limit: number;
+  sources: TelegramSourceStatus[];
+  recent_runs: {
+    started_at: string | null;
+    status: string;
+    fetched: number;
+    new: number;
+    error: string | null;
+  }[];
+}
+
 export interface Dashboard {
   findings_total: number;
   findings_24h: number;

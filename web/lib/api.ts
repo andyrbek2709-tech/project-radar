@@ -6,6 +6,7 @@ import type {
   FindingPage,
   Project,
   Source,
+  TelegramStatus,
 } from "./types";
 
 const BASE = "/api/proxy";
@@ -97,6 +98,8 @@ export const api = {
       body: JSON.stringify({ is_active: isActive }),
     }),
   resetCursor: (id: string) => request(`/sources/${id}/reset-cursor`, { method: "POST" }),
+
+  telegramStatus: () => request<TelegramStatus>("/telegram/status"),
 
   reports: () => request<DailyReport[]>("/reports"),
   latestReport: () => request<DailyReport>("/reports/latest"),

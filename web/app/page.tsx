@@ -4,7 +4,7 @@ import { Fragment, useEffect, useState } from "react";
 import Link from "next/link";
 import { api } from "@/lib/api";
 import { downloadAgentDigest } from "@/lib/download";
-import type { Dashboard, DailyReport } from "@/lib/types";
+import type { Dashboard, DailyReport, TelegramStatus } from "@/lib/types";
 
 const JOBS = [
   { id: "collect-github", label: "Собрать GitHub" },
@@ -18,6 +18,10 @@ export default function DashboardPage() {
   const [report, setReport] = useState<DailyReport | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  // Разбор Telegram грузится отдельно и по кнопке: запрос дешёвый, но нужен
+  // не всегда, а таблица каналов занимает весь экран телефона.
+  const [tg, setTg] = useState<TelegramStatus | null>(null);
+  const [tgError, setTgError] = useState<string | null>(null);
 
   async function load() {
     try {
@@ -46,6 +50,16 @@ export default function DashboardPage() {
     } catch (err) {
       setToast(`Ошибка: ${(err as Error).message}`);
       setTimeout(() => setToast(null), 5000);
+    }
+  }
+
+  async function loadTelegram() {
+    try {
+      setTgError(null);
+      setTg(await api.telegramStatus());
+    } catch (err) {
+      setTg(null);
+      setTgError((err as Error).message);
     }
   }
 
@@ -304,6 +318,101 @@ export default function DashboardPage() {
             ) : null}
           </tbody>
         </table>
+      </div>
+
+      {/* «0 получено, 0 новых» при статусе ok — это сразу четыре разные причины:
+          канал на паузе после FloodWait, канал не резолвится, курсор ещё ползёт
+          по старой истории, либо всё прочитано и новых постов правда нет.
+          Итог прогона их не различает, состояние каналов — различает. */}
+      <div className="card" style={{ marginTop: 20 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          <h2 style={{ margin: 0 }}>Telegram по каналам</h2>
+          <button className="btn-ghost btn-sm" onClick={loadTelegram}>
+            {tg ? "Обновить" : "Проверить"}
+          </button>
+          {tg ? (
+            <span style={{ color: "var(--tx-3)", fontSize: 12 }}>
+              настроено {tg.configured_count}, опрос раз в {tg.scan_interval_minutes} мин,
+              по {tg.history_limit} сообщений за прогон
+              {tg.enabled ? "" : " · СБОР ВЫКЛЮЧЕН"}
+            </span>
+          ) : null}
+        </div>
+
+        {tgError ? (
+          <div className="error-box" style={{ marginTop: 12 }}>
+            {tgError}
+          </div>
+        ) : null}
+
+        {tg ? (
+          <>
+            {tg.not_yet_registered.length > 0 ? (
+              <div style={{ marginTop: 12, fontSize: 12, color: "var(--review)" }}>
+                В переменной есть, но в базе ещё не заведены:{" "}
+                <span className="mono">{tg.not_yet_registered.join(", ")}</span>
+              </div>
+            ) : null}
+            {tg.orphaned_sources.length > 0 ? (
+              <div style={{ marginTop: 6, fontSize: 12, color: "var(--tx-3)" }}>
+                Остались в базе, но убраны из переменной (не читаются):{" "}
+                <span className="mono">{tg.orphaned_sources.join(", ")}</span>
+              </div>
+            ) : null}
+
+            <table style={{ marginTop: 12 }}>
+              <thead>
+                <tr>
+                  <th>Канал</th>
+                  <th className="num">Курсор</th>
+                  <th className="num">Собрано</th>
+                  <th>Последний пост</th>
+                  <th>Что происходит</th>
+                </tr>
+              </thead>
+              <tbody>
+                {tg.sources.map((s) => (
+                  <tr key={s.external_id}>
+                    <td>
+                      {s.title && s.title !== s.external_id ? s.title : null}
+                      <div className="mono" style={{ fontSize: 11, color: "var(--tx-3)" }}>
+                        {s.external_id}
+                      </div>
+                    </td>
+                    <td className="num mono">{s.cursor_last_item_id ?? "—"}</td>
+                    <td className="num">{s.items_collected}</td>
+                    <td>
+                      {s.last_published_at
+                        ? new Date(s.last_published_at).toLocaleDateString("ru-RU")
+                        : "—"}
+                    </td>
+                    <td
+                      style={{
+                        fontSize: 12,
+                        lineHeight: 1.5,
+                        color: s.paused || s.last_error ? "var(--critical)" : "var(--tx-2)",
+                      }}
+                    >
+                      {s.diagnosis}
+                    </td>
+                  </tr>
+                ))}
+                {tg.sources.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} style={{ color: "var(--tx-3)" }}>
+                      Ни одного канала не заведено — проверь TELEGRAM_SOURCE_IDS у сервиса telegram.
+                    </td>
+                  </tr>
+                ) : null}
+              </tbody>
+            </table>
+          </>
+        ) : tgError ? null : (
+          <p style={{ color: "var(--tx-3)", marginTop: 12, fontSize: 13 }}>
+            Нажми «Проверить» — покажет по каждому каналу курсор, дату последнего собранного
+            поста и причину, по которой прогон отдаёт нули.
+          </p>
+        )}
       </div>
 
       {toast ? <div className="toast">{toast}</div> : null}

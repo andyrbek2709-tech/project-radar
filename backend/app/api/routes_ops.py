@@ -29,6 +29,7 @@ from app.schemas import (
     SourceToggle,
 )
 from app.services import usage
+from app.services.telegram_diagnosis import diagnose_source
 
 router = APIRouter(tags=["ops"])
 
@@ -107,6 +108,111 @@ def reset_cursor(source_id: uuid.UUID, db: DbSession, _: CurrentUser):
     cursor.etag = None
     db.flush()
     return {"status": "ok", "previous_cursor": previous}
+
+
+@router.get("/telegram/status", response_model=dict)
+def telegram_status(db: DbSession, _: CurrentUser):
+    """Почему Telegram отдаёт 0/0 — ответ по каждому каналу, без вызова Telethon.
+
+    В таблице «Коллекторы» видно только итог прогона, и «0 получено, 0 новых»
+    при статусе ok означает сразу несколько разных вещей: канал на паузе после
+    FloodWait, канал не резолвится, курсор ещё ползёт по старой истории, либо
+    всё прочитано и новых постов действительно нет. Отличить их можно только по
+    состоянию источников, а оно наружу не отдавалось.
+
+    Запрос read-only и не трогает Telethon: сессия живёт в отдельном процессе
+    `telegram_runner`, и второй клиент на тех же ключах — прямой путь к
+    нарастающему FloodWait. Поэтому здесь только то, что уже лежит в базе.
+    """
+    now = datetime.now(timezone.utc)
+    sources = db.execute(
+        select(Source).where(Source.kind == "telegram").order_by(Source.external_id)
+    ).scalars().all()
+
+    # Свежесть собранного — главный признак: если последнее собранное сообщение
+    # датировано прошлым годом, канал не «молчит», а всё ещё ползёт по истории.
+    # Фильтр по source_id, а не по RawItem.kind: коллектор пишет kind
+    # "telegram_message", и сверка по "telegram" молча дала бы пустую статистику.
+    source_ids = [s.id for s in sources]
+    stats = {
+        row.source_id: row
+        for row in db.execute(
+            select(
+                RawItem.source_id,
+                func.count(RawItem.id).label("items"),
+                func.max(RawItem.published_at).label("last_published"),
+                func.max(RawItem.collected_at).label("last_collected"),
+            )
+            .where(RawItem.source_id.in_(source_ids))
+            .group_by(RawItem.source_id)
+        ).all()
+    } if source_ids else {}
+
+    out: list[dict] = []
+    for s in sources:
+        st = stats.get(s.id)
+        items = int(st.items) if st else 0
+        last_published = st.last_published if st else None
+        cursor = s.cursor.last_item_id if s.cursor else None
+        paused = s.paused_until is not None and s.paused_until > now
+
+        history_limit = int((s.config or {}).get("history_limit", settings.TELEGRAM_HISTORY_LIMIT))
+        diagnosis = diagnose_source(
+            now=now,
+            is_active=s.is_active,
+            paused_until=s.paused_until,
+            last_error=s.last_error,
+            last_run_at=s.last_run_at,
+            items_collected=items,
+            last_published_at=last_published,
+            history_limit=history_limit,
+        )
+
+        out.append({
+            "external_id": s.external_id,
+            "title": s.title,
+            "is_active": s.is_active,
+            "paused": paused,
+            "paused_until": s.paused_until.isoformat() if s.paused_until else None,
+            "last_run_at": s.last_run_at.isoformat() if s.last_run_at else None,
+            "last_error": s.last_error,
+            "cursor_last_item_id": cursor,
+            "history_limit": history_limit,
+            "items_collected": items,
+            "last_published_at": last_published.isoformat() if last_published else None,
+            "last_collected_at": st.last_collected.isoformat() if st and st.last_collected else None,
+            "diagnosis": diagnosis,
+        })
+
+    configured = settings.telegram_source_ids
+    # Канал убрали из переменной, а строка в sources осталась — он больше не
+    # читается, и это не видно ниоткуда.
+    known = {s.external_id for s in sources}
+    return {
+        "enabled": settings.TELEGRAM_ENABLED,
+        "configured_ids": configured,
+        "configured_count": len(configured),
+        "not_yet_registered": [c for c in configured if c not in known],
+        "orphaned_sources": [s.external_id for s in sources if s.external_id not in set(configured)],
+        "scan_interval_minutes": settings.TELEGRAM_SCAN_INTERVAL_MINUTES,
+        "history_limit": settings.TELEGRAM_HISTORY_LIMIT,
+        "sources": out,
+        "recent_runs": [
+            {
+                "started_at": r.started_at.isoformat() if r.started_at else None,
+                "status": r.status,
+                "fetched": r.items_fetched,
+                "new": r.items_new,
+                "error": r.error,
+            }
+            for r in db.execute(
+                select(CollectorRun)
+                .where(CollectorRun.collector == "telegram")
+                .order_by(CollectorRun.started_at.desc())
+                .limit(10)
+            ).scalars().all()
+        ],
+    }
 
 
 # ---------------------------------------------------------------- reports
