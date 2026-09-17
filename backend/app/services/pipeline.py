@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from app.analysis.embeddings import get_embedding_provider
@@ -800,6 +800,23 @@ def _reject_globally(
 
 
 # ------------------------------------------------------------------ запуск
+
+
+def reset_errors(session: Session) -> int:
+    """Вернуть сырьё из ERROR в очередь.
+
+    ERROR — конечный статус: обычный прогон конвейера выбирает только PENDING
+    (см. run_pipeline ниже) и никогда не подхватывает то, что уже упало.
+    Любой временный сбой конфигурации (не тот Groq-модель, битый embedding)
+    навсегда хоронит попавшие под него находки, если их не вернуть руками.
+    """
+    result = session.execute(
+        update(RawItem)
+        .where(RawItem.processing_status == ProcessingStatus.ERROR)
+        .values(processing_status=ProcessingStatus.PENDING, error=None)
+    )
+    session.commit()
+    return result.rowcount or 0
 
 
 def run_pipeline(session: Session, *, batch_size: int | None = None) -> dict[str, Any]:

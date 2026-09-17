@@ -12,7 +12,7 @@ from app.core.config import settings
 from app.core.db import session_scope
 from app.core.logging import get_logger
 from app.services import deep_analysis, radar_report, reassessment
-from app.services.pipeline import run_pipeline
+from app.services.pipeline import reset_errors, run_pipeline
 from app.tasks.celery_app import celery_app
 
 log = get_logger("scheduler")
@@ -43,6 +43,14 @@ def snapshot_repositories(**_: Any) -> dict[str, Any]:
 def process_pipeline(**_: Any) -> dict[str, Any]:
     with session_scope() as session:
         return run_pipeline(session)
+
+
+@celery_app.task(name="radar.retry_errors")
+def retry_errors(**_: Any) -> dict[str, Any]:
+    """Вернуть сырьё, застрявшее в ERROR, обратно в очередь на разбор."""
+    with session_scope() as session:
+        restored = reset_errors(session)
+        return {"status": "ok", "restored": restored}
 
 
 @celery_app.task(name="radar.run_deep_analyses")
@@ -158,6 +166,7 @@ __all__ = [
     "collect_github",
     "snapshot_repositories",
     "process_pipeline",
+    "retry_errors",
     "run_deep_analyses",
     "check_reassessments",
     "promote_review_queue",

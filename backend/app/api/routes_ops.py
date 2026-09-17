@@ -440,6 +440,7 @@ def trigger_job(job: str, _: CurrentUser, force: bool = False):
         "collect-github": jobs.collect_github,
         "snapshot-repositories": jobs.snapshot_repositories,
         "process-pipeline": jobs.process_pipeline,
+        "retry-errors": jobs.retry_errors,
         "deep-analyses": jobs.run_deep_analyses,
         "check-reassessments": jobs.check_reassessments,
         "promote-review": jobs.promote_review_queue,
