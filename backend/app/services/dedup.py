@@ -74,7 +74,10 @@ def find_semantic_duplicate(
     exclude_id: uuid.UUID | None = None,
 ) -> tuple[Finding, float] | None:
     """Ближайший сосед по косинусу. Порог — DEDUP_COSINE_THRESHOLD (расстояние!)."""
-    if not embedding:
+    # pgvector возвращает embedding numpy-массивом: `not array` с более чем
+    # одним элементом кидает ValueError («truth value is ambiguous»), поэтому
+    # проверяем None/длину явно, а не булевостью самого массива.
+    if embedding is None or len(embedding) == 0:
         return None
     threshold = threshold if threshold is not None else settings.DEDUP_COSINE_THRESHOLD
 

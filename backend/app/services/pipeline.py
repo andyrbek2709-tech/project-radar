@@ -706,14 +706,17 @@ def _nearest_feature(
     embedding: list[float] | None, features: list[ProjectFeature]
 ) -> tuple[float | None, ProjectFeature | None]:
     """Ближайшая существующая фича — ответ на вопрос «а у нас это уже есть?»."""
-    if not embedding or not features:
+    # pgvector отдаёт embedding numpy-массивом: `not array` при длине > 1
+    # кидает ValueError («truth value is ambiguous»), поэтому None/длина
+    # проверяются явно, а не булевостью самого массива.
+    if embedding is None or len(embedding) == 0 or not features:
         return None, None
 
     from app.analysis.embeddings import cosine_similarity
 
     best_sim, best = -1.0, None
     for feature in features:
-        if not feature.embedding:
+        if feature.embedding is None or len(feature.embedding) == 0:
             continue
         sim = cosine_similarity(embedding, list(feature.embedding))
         if sim > best_sim:
@@ -724,7 +727,7 @@ def _nearest_feature(
 def _nearest_past_finding(
     session: Session, finding: Finding
 ) -> tuple[float | None, Finding | None]:
-    if not finding.embedding:
+    if finding.embedding is None or len(finding.embedding) == 0:
         return None, None
 
     distance = Finding.embedding.cosine_distance(finding.embedding)
@@ -747,7 +750,7 @@ def _past_decisions(
     session: Session, finding: Finding, project: Project, limit: int = 8
 ) -> list[dict[str, Any]]:
     """Прошлые решения по похожим находкам — контекст для модели."""
-    if not finding.embedding:
+    if finding.embedding is None or len(finding.embedding) == 0:
         return []
 
     distance = Finding.embedding.cosine_distance(finding.embedding)
