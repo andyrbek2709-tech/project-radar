@@ -9,6 +9,7 @@ import type { Dashboard, DailyReport } from "@/lib/types";
 const JOBS = [
   { id: "collect-github", label: "Собрать GitHub" },
   { id: "process-pipeline", label: "Прогнать pipeline" },
+  { id: "retry-errors", label: "Повторить ошибки" },
   { id: "snapshot-repositories", label: "Снять снапшоты" },
   { id: "daily-radar", label: "Построить отчёт" },
 ];
