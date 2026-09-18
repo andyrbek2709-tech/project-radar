@@ -97,7 +97,8 @@ export default function DashboardPage() {
         <div>
           <h1>Сводка</h1>
           <div className="subtitle">
-            {data.findings_24h} находок за сутки · {data.pending_raw_items} в очереди на разбор
+            {data.findings_24h} находок за сутки · {data.pending_raw_items} в очереди на разбор ·{" "}
+            {data.analyzed_pending} ждут повторного анализа
           </div>
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>

@@ -289,6 +289,7 @@ class DashboardOut(BaseModel):
     by_status: dict[str, int]
     by_project: list[dict[str, Any]]
     pending_raw_items: int
+    analyzed_pending: int = 0
     review_queue_due: int
     sources: dict[str, int]
     cost: dict[str, Any]
