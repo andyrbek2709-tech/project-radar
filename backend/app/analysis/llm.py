@@ -134,10 +134,24 @@ class GroqClient:
 
     @classmethod
     def _wait_for_slot(cls) -> None:
-        """Дождаться и конца паузы по 429, и минимального интервала между запросами."""
+        """Дождаться и конца паузы по 429, и минимального интервала между запросами.
+
+        Потолок GROQ_MAX_RATE_LIMIT_WAIT_SECONDS до сих пор проверялся только
+        в момент получения 429 — а не здесь, где реально стоит time.sleep.
+        _blocked_until на классе переживает прогон: если retry-after пришёл
+        большим (дневная квота, не поминутный лимит — на проде видели
+        retry-after под 1800s), следующий вызов _call, в том числе из
+        СЛЕДУЮЩЕГО прогона run_pipeline, засыпал тут на остаток с открытой
+        сессией БД. Soft time limit таски (1500s) срабатывал прямо во сне,
+        обрывая транзакцию с "another command is already in progress" —
+        то, что было в логах воркера. Долгую паузу не спим, а отдаём находку
+        следующему прогону через LLMRateLimited, как и на месте 429.
+        """
         now = time.monotonic()
         until = max(cls._blocked_until, cls._last_call_at + settings.GROQ_MIN_INTERVAL_SECONDS)
         delay = until - now
+        if delay > settings.GROQ_MAX_RATE_LIMIT_WAIT_SECONDS:
+            raise LLMRateLimited(f"Groq rate limit still open for {delay:g}s", retry_after=delay)
         if delay > 0:
             time.sleep(delay)
         cls._last_call_at = time.monotonic()
