@@ -16,7 +16,7 @@ from app.models.analysis import (
     ReviewQueueItem,
     Setting,
 )
-from app.models.finding import Finding, FindingProjectMatch
+from app.models.finding import Finding, FindingProjectMatch, FindingStatus
 from app.models.project import Project
 from app.models.source import CollectorRun, ProcessingStatus, RawItem, Source, SourceCursor
 from app.schemas import (
@@ -294,6 +294,17 @@ def dashboard(db: DbSession, _: CurrentUser):
             .where(RawItem.processing_status == ProcessingStatus.PENDING)
         ).scalar_one()
     )
+    # Настоящая очередь после сбоя классификации/сопоставления — RawItem
+    # к этому моменту уже PROCESSED, а находка застряла в ANALYZED и ждёт
+    # reanalyse_pending (см. analyse_finding: matched_any=False → ANALYZED,
+    # иначе находку никто не вернёт). pending_raw_items эту очередь не видит.
+    analyzed_pending = int(
+        db.execute(
+            select(func.count())
+            .select_from(Finding)
+            .where(Finding.status == FindingStatus.ANALYZED)
+        ).scalar_one()
+    )
     due = int(
         db.execute(
             select(func.count())
@@ -341,6 +352,7 @@ def dashboard(db: DbSession, _: CurrentUser):
         by_status={s: int(c) for s, c in by_status.items()},
         by_project=by_project,
         pending_raw_items=pending,
+        analyzed_pending=analyzed_pending,
         review_queue_due=due,
         sources=sources_by_kind,
         cost=usage.dashboard(db),

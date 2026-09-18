@@ -173,6 +173,7 @@ export interface Dashboard {
   by_status: Record<string, number>;
   by_project: { slug: string; name: string; total: number; avg_score: number }[];
   pending_raw_items: number;
+  analyzed_pending: number;
   review_queue_due: number;
   sources: Record<string, number>;
   cost: {
