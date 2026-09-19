@@ -41,6 +41,7 @@ from app.models.analysis import (
     DecisionStatus,
     FindingAnalysis,
     ReasonCode,
+    Setting,
 )
 from app.models.finding import Finding, FindingProjectMatch, FindingStatus
 from app.models.project import Project, ProjectFeature
@@ -819,8 +820,22 @@ def reset_errors(session: Session) -> int:
     return result.rowcount or 0
 
 
+def is_pipeline_paused(session: Session) -> bool:
+    """Ручной стоп-кран — включается кнопкой на дашборде, без редеплоя.
+
+    Нужен, чтобы можно было остановить траты на LLM немедленно (например,
+    пока разбираются с ценой/моделью), не трогая Celery beat и не выключая
+    сбор сырья: коллекторы продолжают работать, очередь просто не тает.
+    """
+    setting = session.get(Setting, "pipeline_paused")
+    return bool(setting and setting.value.get("paused"))
+
+
 def run_pipeline(session: Session, *, batch_size: int | None = None) -> dict[str, Any]:
     """Обработать очередь pending. Идемпотентно: обработанное не берётся повторно."""
+    if is_pipeline_paused(session):
+        return {"status": "paused"}
+
     batch_size = batch_size or settings.PIPELINE_BATCH_SIZE
     stats = PipelineStats()
 

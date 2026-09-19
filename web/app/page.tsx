@@ -23,6 +23,7 @@ export default function DashboardPage() {
   // не всегда, а таблица каналов занимает весь экран телефона.
   const [tg, setTg] = useState<TelegramStatus | null>(null);
   const [tgError, setTgError] = useState<string | null>(null);
+  const [paused, setPaused] = useState(false);
 
   async function load() {
     try {
@@ -35,6 +36,25 @@ export default function DashboardPage() {
       setReport(await api.latestReport());
     } catch {
       setReport(null);
+    }
+    try {
+      const rows = await api.settings();
+      setPaused(Boolean(rows.find((r) => r.key === "pipeline_paused")?.value?.paused));
+    } catch {
+      /* настройки не критичны для остального экрана */
+    }
+  }
+
+  async function togglePipeline() {
+    const next = !paused;
+    try {
+      await api.setSetting("pipeline_paused", { paused: next });
+      setPaused(next);
+      setToast(next ? "Конвейер остановлен — трат на AI не будет" : "Конвейер снова работает");
+      setTimeout(() => setToast(null), 3000);
+    } catch (err) {
+      setToast(`Ошибка: ${(err as Error).message}`);
+      setTimeout(() => setToast(null), 5000);
     }
   }
 
@@ -116,6 +136,13 @@ export default function DashboardPage() {
           </div>
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <button
+            className="btn-ghost btn-sm"
+            onClick={togglePipeline}
+            style={paused ? { color: "var(--recommended)" } : { color: "var(--critical)" }}
+          >
+            {paused ? "Запустить конвейер" : "Стоп конвейер"}
+          </button>
           {JOBS.map((job) => (
             <button key={job.id} className="btn-ghost btn-sm" onClick={() => runJob(job.id)}>
               {job.label}
@@ -126,6 +153,11 @@ export default function DashboardPage() {
           </button>
         </div>
       </div>
+      {paused ? (
+        <div className="error-box" style={{ marginBottom: 16 }}>
+          Конвейер остановлен вручную — новые находки не классифицируются, трат на AI нет. Коллекторы продолжают собирать сырьё, оно просто ждёт.
+        </div>
+      ) : null}
 
       <div className="grid grid-4">
         <div className="stat">
