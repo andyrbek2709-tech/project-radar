@@ -105,6 +105,9 @@ export const api = {
   latestReport: () => request<DailyReport>("/reports/latest"),
 
   runtimeSettings: () => request<Record<string, any>>("/settings/runtime"),
+  settings: () => request<{ key: string; value: any; updated_at: string }[]>("/settings"),
+  setSetting: (key: string, value: unknown) =>
+    request(`/settings/${key}`, { method: "PUT", body: JSON.stringify({ value }) }),
   trigger: (job: string, force = false) =>
     request<{ status: string; job: string; task_id: string }>(
       `/trigger/${job}${force ? "?force=true" : ""}`,
